@@ -1,13 +1,20 @@
 {
-  "name": "discord-bot",
+  "name": "discord-key-bot",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Discord bot to manage auth server keys",
   "main": "bot.js",
+  "type": "module",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "express": "^4.19.2"
-  }
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "YourName",
+  "license": "MIT"
 }
