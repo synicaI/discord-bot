@@ -1,4 +1,4 @@
-// index.js (Auth Server with Roblox + Discord bot fixes)
+// index.js (Auth Server with key validation + HWID locking)
 import express from "express";
 const app = express();
 
@@ -7,15 +7,16 @@ const PORT = process.env.PORT || 8080;
 const SECRET_KEY = process.env.SECRET_KEY || "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
 // ================= KEYS =================
+// Predefined Roblox keys
 const keys = {
-  "a9c3f72b5e4d8190f1c7b2e3d6a98c41": { hwid: null, expires: null },
-  "x972jsdjdinsdvbdozopnksd92ejd919": { hwid: null, expires: null }
+  "a9c3f72b5e4d8190f1c7b2e3d6a98c41": { hwid: null, expires: "2099-12-31" },
+  "x972jsdjdinsdvbdozopnksd92ejd919": { hwid: null, expires: "2099-12-31" }
 };
 
 // ================= HELPERS =================
 function unauthorized(res, reason = "Unauthorized!") {
   console.log("AUTH FAIL:", reason);
-  return res.status(403).send(reason); // 403 = failure
+  return res.status(403).send(reason); // 403 = kick Roblox player
 }
 
 // ================= MIDDLEWARE =================
@@ -36,7 +37,7 @@ app.get("/v9/auth", (req, res) => {
   const keyData = keys[k];
 
   // Expiration check
-  if (keyData.expires && new Date() > new Date(keyData.expires))
+  if (!keyData.expires || new Date() > new Date(keyData.expires))
     return unauthorized(res, "Key expired");
 
   // Lock HWID on first use
@@ -48,7 +49,7 @@ app.get("/v9/auth", (req, res) => {
   }
 
   console.log(`AUTH SUCCESS: key ${k} for HWID ${hwid}`);
-  return res.status(200).send("OK"); // 200 = success
+  return res.status(200).send("OK");
 });
 
 // ================= HWID RESET =================
@@ -67,10 +68,14 @@ app.get("/reset-hwid", (req, res) => {
 // Add or update a key
 app.post("/admin/key", (req, res) => {
   const { secret, key, hwid, expires } = req.body;
-  if (secret !== SECRET_KEY) return res.status(403).send("Forbidden");
-  if (!key) return res.status(400).send("Key is required");
 
-  keys[key] = { hwid: hwid || null, expires: expires || null };
+  if (secret !== SECRET_KEY) return res.status(403).send("Forbidden");
+
+  // Key validation
+  if (!key || key.length < 5) return res.status(400).send("Invalid key format");
+  if (!expires) return res.status(400).send("Expiration date required");
+
+  keys[key] = { hwid: hwid || null, expires };
   console.log(`KEY ADDED/UPDATED: ${key}`);
   res.status(200).send(`Key ${key} added/updated`);
 });
