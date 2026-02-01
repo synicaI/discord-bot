@@ -1,140 +1,109 @@
-import express from "express";
-import dotenv from "dotenv";
-import fs from "fs";
 import { Client, GatewayIntentBits } from "discord.js";
+import fetch from "node-fetch";
 
-dotenv.config();
-
-// ================== CONFIG ==================
-const app = express();
-const PORT = process.env.PORT || 8080;
+// ================= CONFIG =================
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const AUTH_URL = process.env.AUTH_URL; // https://your-auth.up.railway.app
 const SECRET_KEY = process.env.SECRET_KEY;
 const ADMIN_ROLE_ID = process.env.ADMIN_ROLE_ID;
-const KEYS_FILE = "./keys.json";
 
-// ================== KEYS STORAGE ==================
-let keys = {};
-if (fs.existsSync(KEYS_FILE)) {
-    keys = JSON.parse(fs.readFileSync(KEYS_FILE, "utf8"));
-}
-
-function saveKeys() {
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
-}
-
-// ================== AUTH ROUTE (ROBLOX) ==================
-app.get("/v9/auth", (req, res) => {
-    const { SECRET_KEY: secret, k, hwid } = req.query;
-
-    if (secret !== SECRET_KEY) return res.sendStatus(401);
-
-    const keyData = keys[k];
-    if (!keyData) return res.sendStatus(401);
-
-    if (keyData.expires && Date.now() > keyData.expires) {
-        return res.sendStatus(403);
-    }
-
-    if (!keyData.hwid) {
-        keyData.hwid = hwid;
-        saveKeys();
-        return res.sendStatus(200);
-    }
-
-    if (keyData.hwid !== hwid) {
-        return res.sendStatus(403);
-    }
-
-    return res.sendStatus(200);
-});
-
-// ================== START AUTH SERVER ==================
-app.listen(PORT);
-
-// ================== DISCORD BOT ==================
+// ================= DISCORD CLIENT =================
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers // 🔥 REQUIRED for role checks
+  ]
 });
 
-client.once("ready", () => {});
+client.once("ready", () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
 
-// ================== COMMAND HANDLER ==================
+// ================= HELPERS =================
+function hasPermission(member) {
+  return member.roles.cache.has(ADMIN_ROLE_ID);
+}
+
+async function api(path, body) {
+  const res = await fetch(`${AUTH_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...body,
+      secret: SECRET_KEY
+    })
+  });
+
+  return res.text();
+}
+
+// ================= COMMAND HANDLER =================
 client.on("messageCreate", async (msg) => {
-    if (msg.author.bot) return;
-    if (!msg.content.startsWith("!key")) return;
+  if (msg.author.bot) return;
+  if (!msg.guild) return;
+  if (!msg.content.startsWith("!key")) return;
 
-    const member = msg.member;
-    if (!member.roles.cache.has(ADMIN_ROLE_ID)) {
-        return msg.reply("❌ You do not have permission.");
+  const member = await msg.guild.members.fetch(msg.author.id);
+  if (!hasPermission(member)) {
+    return msg.reply("❌ You do not have permission to use this command.");
+  }
+
+  const args = msg.content.split(" ").slice(1);
+  const sub = args[0];
+
+  // ================= !key add =================
+  if (sub === "add") {
+    const key = args[1];
+    const days = args[2]; // optional
+
+    if (!key) {
+      return msg.reply("❌ Usage: `!key add <key> [days]`");
     }
 
-    const args = msg.content.split(" ").slice(1);
-    const sub = args.shift();
+    const expires =
+      days ? Date.now() + Number(days) * 86400000 : null;
 
-    // !key add <key> [days]
-    if (sub === "add") {
-        const key = args[0];
-        const days = args[1];
+    const result = await api("/admin/key/add", {
+      key,
+      expires
+    });
 
-        if (!key) return msg.reply("❌ Provide a key.");
+    return msg.reply(`✅ ${result}`);
+  }
 
-        let expires = null;
-        if (days) {
-            expires = Date.now() + parseInt(days) * 86400000;
-        }
-
-        keys[key] = { hwid: null, expires };
-        saveKeys();
-
-        return msg.reply(`✅ Key **${key}** added.`);
+  // ================= !key delete =================
+  if (sub === "delete") {
+    const key = args[1];
+    if (!key) {
+      return msg.reply("❌ Usage: `!key delete <key>`");
     }
 
-    // !key delete <key>
-    if (sub === "delete") {
-        const key = args[0];
-        if (!keys[key]) return msg.reply("❌ Key not found.");
+    const result = await api("/admin/key/delete", { key });
+    return msg.reply(`🗑️ ${result}`);
+  }
 
-        delete keys[key];
-        saveKeys();
-
-        return msg.reply(`✅ Key **${key}** deleted.`);
+  // ================= !key reset =================
+  if (sub === "reset") {
+    const key = args[1];
+    if (!key) {
+      return msg.reply("❌ Usage: `!key reset <key>`");
     }
 
-    // !key reset-hwid <key>
-    if (sub === "reset-hwid") {
-        const key = args[0];
-        if (!keys[key]) return msg.reply("❌ Key not found.");
+    const result = await api("/admin/key/reset-hwid", { key });
+    return msg.reply(`🔓 ${result}`);
+  }
 
-        keys[key].hwid = null;
-        saveKeys();
+  // ================= !key list =================
+  if (sub === "list") {
+    const result = await api("/admin/keys", {});
+    return msg.reply("```json\n" + result + "\n```");
+  }
 
-        return msg.reply(`✅ HWID reset for **${key}**.`);
-    }
-
-    // !key list
-    if (sub === "list") {
-        if (Object.keys(keys).length === 0) {
-            return msg.reply("No keys.");
-        }
-
-        let text = "";
-        for (const k in keys) {
-            const hwid = keys[k].hwid ?? "null";
-            const exp = keys[k].expires
-                ? new Date(keys[k].expires).toLocaleString()
-                : "lifetime";
-            text += `• ${k} | HWID: ${hwid} | Exp: ${exp}\n`;
-        }
-
-        return msg.reply("```\n" + text + "```");
-    }
-
-    msg.reply("❌ Unknown command.");
+  // ================= UNKNOWN =================
+  return msg.reply("❌ Unknown command.");
 });
 
-// ================== LOGIN ==================
-client.login(process.env.DISCORD_TOKEN);
+// ================= LOGIN =================
+client.login(BOT_TOKEN);
