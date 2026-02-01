@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ===== CONFIG =====
-const AUTH_SERVER = process.env.AUTH_SERVER;
+const AUTH_SERVER = process.env.AUTH_SERVER.replace(/\/$/, ""); // remove trailing slash
 const SECRET_KEY = process.env.SECRET_KEY;
 const ALLOWED_ROLE = process.env.ALLOWED_ROLE; // admin role ID
 
@@ -18,14 +18,13 @@ const client = new Client({
   ]
 });
 
-client.on("ready", () => {
+client.on("clientReady", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 // ===== COMMAND HANDLER =====
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-
   if (!message.member.roles.cache.has(ALLOWED_ROLE)) return;
 
   const args = message.content.trim().split(/ +/);
@@ -88,7 +87,7 @@ client.on("messageCreate", async (message) => {
       message.channel.send("```" + output + "```");
     }
 
-    // ===== HELP / COMMANDS =====
+    // ===== HELP =====
     else if (cmd === "!help" || cmd === "!commands") {
       message.channel.send(`
 🔹 **Key Management Commands**
