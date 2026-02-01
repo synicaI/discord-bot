@@ -5,15 +5,21 @@ import fetch from "node-fetch";
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const AUTH_URL = process.env.AUTH_URL; // e.g., https://your-auth-project.up.railway.app
 const SECRET_KEY = process.env.SECRET_KEY;
-const ADMIN_ROLE_ID = process.env.ADMIN_ROLE_ID;
+
+// ================= USER WHITELIST =================
+const ALLOWED_USERS = [
+  "1001562621381714080",
+  "1375016755822596096",
+  "1389631531114430594",
+  "1255892341206552607"
+];
 
 // ================= DISCORD CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers // 🔥 REQUIRED for role checks
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -40,10 +46,8 @@ client.on("messageCreate", async (msg) => {
   if (!msg.guild) return;
   if (!msg.content.startsWith("!key")) return;
 
-  // 🔹 Fetch full member from API to get roles reliably
-  const member = await msg.guild.members.fetch(msg.author.id);
-  const hasRole = member.roles.cache.some(r => r.id === ADMIN_ROLE_ID);
-  if (!hasRole) {
+  // 🔹 USER ID CHECK
+  if (!ALLOWED_USERS.includes(msg.author.id)) {
     return msg.reply("❌ You do not have permission to use this command.");
   }
 
