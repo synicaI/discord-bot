@@ -1,7 +1,6 @@
 {
   "name": "discord-key-bot",
   "version": "1.0.0",
-  "description": "Discord bot to manage auth server keys",
   "main": "bot.js",
   "type": "module",
   "scripts": {
@@ -14,7 +13,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "author": "YourName",
-  "license": "MIT"
+  }
 }
