@@ -1,4 +1,4 @@
-// index.js (Auth Server)
+// index.js (Auth Server with Roblox + Discord bot fixes)
 import express from "express";
 const app = express();
 
@@ -15,7 +15,7 @@ const keys = {
 // ================= HELPERS =================
 function unauthorized(res, reason = "Unauthorized!") {
   console.log("AUTH FAIL:", reason);
-  return res.status(200).send(reason);
+  return res.status(403).send(reason); // 403 = failure
 }
 
 // ================= MIDDLEWARE =================
@@ -35,9 +35,11 @@ app.get("/v9/auth", (req, res) => {
 
   const keyData = keys[k];
 
+  // Expiration check
   if (keyData.expires && new Date() > new Date(keyData.expires))
     return unauthorized(res, "Key expired");
 
+  // Lock HWID on first use
   if (!keyData.hwid) {
     keyData.hwid = hwid;
     console.log(`HWID locked for key ${k}: ${hwid}`);
@@ -46,7 +48,7 @@ app.get("/v9/auth", (req, res) => {
   }
 
   console.log(`AUTH SUCCESS: key ${k} for HWID ${hwid}`);
-  return res.status(200).send(""); // empty string = success
+  return res.status(200).send("OK"); // 200 = success
 });
 
 // ================= HWID RESET =================
