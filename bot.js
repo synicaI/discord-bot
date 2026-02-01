@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ===== CONFIG =====
-const AUTH_SERVER = process.env.AUTH_SERVER.replace(/\/$/, ""); // remove trailing slash
+const AUTH_SERVER = process.env.AUTH_SERVER.replace(/\/$/, "");
 const SECRET_KEY = process.env.SECRET_KEY;
 const ALLOWED_ROLE = process.env.ALLOWED_ROLE; // admin role ID
 
@@ -35,8 +35,10 @@ client.on("messageCreate", async (message) => {
     if (cmd === "!key" && args[1] === "add") {
       const key = args[2];
       const hwid = args[3] || null;
-      const expires = args[4] || null;
+      const expires = args[4]; // required
+
       if (!key) return message.reply("❌ You must provide a key.");
+      if (!expires) return message.reply("❌ You must provide an expiration date (YYYY-MM-DD).");
 
       const res = await fetch(`${AUTH_SERVER}/admin/key`, {
         method: "POST",
@@ -91,10 +93,10 @@ client.on("messageCreate", async (message) => {
     else if (cmd === "!help" || cmd === "!commands") {
       message.channel.send(`
 🔹 **Key Management Commands**
-• !key add <KEY> [HWID] [YYYY-MM-DD] → Add or update a key
-• !key delete <KEY> → Delete a key
+• !key add <KEY> [HWID] <YYYY-MM-DD> → Add/update key
+• !key delete <KEY> → Delete key
 • !key reset-hwid <KEY> → Reset HWID
-• !key list → List all keys
+• !key list → List keys
 • !help / !commands → Show this message
       `);
     }
