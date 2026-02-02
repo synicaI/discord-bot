@@ -1,29 +1,34 @@
 import express from "express";
+import fetch from "node-fetch"; // make sure node-fetch is installed: npm install node-fetch
 
 const app = express();
 app.use(express.json());
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const WEBHOOK_URL = process.env.WEBHOOK_URL || null; // can be null
 
 // ================= KEYS =================
 const keys = new Map();
 
 // ================= HELPER =================
 async function logWebhook(title, fields) {
-    if (!WEBHOOK_URL) return;
+    if (!WEBHOOK_URL) return; // skip if not provided
 
-    await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            embeds: [{
-                title,
-                color: 0x2b2d31,
-                fields,
-                timestamp: new Date().toISOString()
-            }]
-        })
-    });
+    try {
+        await fetch(WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                embeds: [{
+                    title,
+                    color: 0x2b2d31,
+                    fields,
+                    timestamp: new Date().toISOString()
+                }]
+            })
+        });
+    } catch (err) {
+        console.warn("Failed to send webhook:", err.message);
+    }
 }
 
 // ================= ADMIN ROUTES =================
@@ -89,7 +94,7 @@ app.get("/v9/auth", async (req, res) => {
         return res.status(401).send("AUTH_FAIL");
     }
 
-    return res.status(200).send("");
+    return res.status(200).send(""); // success
 });
 
 // ================= START =================
