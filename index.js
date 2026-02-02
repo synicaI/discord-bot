@@ -1,22 +1,14 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-const ADMIN_IDS = [
-  "1001562621381714080",
-  "1375016755822596096",
-  "1389631531114430594",
-  "1255892341206552607"
-];
-
-// ================= STORAGE =================
+// ================= KEYS =================
 const keys = new Map();
 
-// ================= HELPERS =================
+// ================= HELPER =================
 async function logWebhook(title, fields) {
     if (!WEBHOOK_URL) return;
 
@@ -34,44 +26,36 @@ async function logWebhook(title, fields) {
     });
 }
 
-function requireAdmin(req, res, next) {
-    const adminId = req.headers["x-admin-id"];
-    if (!ADMIN_IDS.includes(adminId)) {
-        return res.status(403).send("FORBIDDEN");
-    }
-    next();
-}
-
 // ================= ADMIN ROUTES =================
-app.post("/admin/key/add", requireAdmin, async (req, res) => {
+app.post("/admin/key/add", async (req, res) => {
     const { key, admin } = req.body;
-    if (!key) return res.status(400).send("NO_KEY");
+    if (!key) return res.status(400).send("Missing key");
 
-    keys.set(key, { hwid: null });
+    keys.set(key, { hwid: null, expires: null });
 
     await logWebhook("🔑 Key Added", [
-        { name: "Key", value: key },
-        { name: "By", value: admin }
+        { name: "Key", value: key, inline: true },
+        { name: "By", value: admin ?? "Unknown", inline: true }
     ]);
 
     res.send("OK");
 });
 
-app.post("/admin/key/delete", requireAdmin, async (req, res) => {
+app.post("/admin/key/delete", async (req, res) => {
     const { key, admin } = req.body;
-    if (!keys.has(key)) return res.status(404).send("NOT_FOUND");
+    if (!keys.has(key)) return res.status(404).send("Not found");
 
     keys.delete(key);
 
     await logWebhook("🗑️ Key Deleted", [
-        { name: "Key", value: key },
-        { name: "By", value: admin }
+        { name: "Key", value: key, inline: true },
+        { name: "By", value: admin ?? "Unknown", inline: true }
     ]);
 
     res.send("OK");
 });
 
-app.get("/admin/key/list", requireAdmin, (req, res) => {
+app.get("/admin/key/list", (req, res) => {
     res.json([...keys.entries()]);
 });
 
@@ -89,6 +73,7 @@ app.get("/v9/auth", async (req, res) => {
 
     const data = keys.get(k);
 
+    // HWID lock
     if (data.hwid === null) {
         data.hwid = hwid;
         keys.set(k, data);
@@ -96,7 +81,7 @@ app.get("/v9/auth", async (req, res) => {
         await logWebhook("🔒 HWID Locked", [
             { name: "Key", value: k },
             { name: "HWID", value: hwid },
-            { name: "PlaceId", value: experienceId }
+            { name: "ExperienceId", value: experienceId }
         ]);
     }
 
@@ -104,9 +89,11 @@ app.get("/v9/auth", async (req, res) => {
         return res.status(401).send("AUTH_FAIL");
     }
 
-    res.status(200).send("OK");
+    return res.status(200).send("");
 });
 
 // ================= START =================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("API ONLINE"));
+app.listen(PORT, () => {
+    console.log(`Auth server running on port ${PORT}`);
+});
