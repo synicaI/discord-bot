@@ -1,13 +1,15 @@
 {
-  "name": "discord-key-bot",
-  "version": "1.0.0",
+  "name": "key-auth-system",
   "type": "module",
-  "main": "bot.js",
+  "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node index.js",
+    "bot": "node bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
+    "express": "^4.19.2",
     "node-fetch": "^3.3.2"
   }
 }
