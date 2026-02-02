@@ -1,78 +1,112 @@
 import express from "express";
-import fs from "fs";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-const SECRET_KEY = process.env.SECRET_KEY || "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
-const PORT = process.env.PORT || 3000;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-const DB_FILE = "./keys.json";
+const ADMIN_IDS = [
+  "1001562621381714080",
+  "1375016755822596096",
+  "1389631531114430594",
+  "1255892341206552607"
+];
 
-if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({}));
+// ================= STORAGE =================
+const keys = new Map();
+
+// ================= HELPERS =================
+async function logWebhook(title, fields) {
+    if (!WEBHOOK_URL) return;
+
+    await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            embeds: [{
+                title,
+                color: 0x2b2d31,
+                fields,
+                timestamp: new Date().toISOString()
+            }]
+        })
+    });
 }
 
-const loadDB = () => JSON.parse(fs.readFileSync(DB_FILE));
-const saveDB = (db) => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-
-/* ================= AUTH ================= */
-
-app.get("/v9/auth", (req, res) => {
-    const { SECRET_KEY: sk, k, hwid, experienceId } = req.query;
-
-    if (sk !== SECRET_KEY) return res.status(403).send("Invalid secret");
-    if (!k || !hwid || !experienceId) return res.status(400).send("Missing data");
-
-    const db = loadDB();
-    const keyData = db[k];
-
-    if (!keyData) return res.status(401).send("Key not found");
-
-    if (!keyData.hwid) {
-        keyData.hwid = hwid;
-        saveDB(db);
-        return res.send("");
+function requireAdmin(req, res, next) {
+    const adminId = req.headers["x-admin-id"];
+    if (!ADMIN_IDS.includes(adminId)) {
+        return res.status(403).send("FORBIDDEN");
     }
+    next();
+}
 
-    if (keyData.hwid !== hwid) {
-        return res.status(401).send("HWID mismatch");
-    }
+// ================= ADMIN ROUTES =================
+app.post("/admin/key/add", requireAdmin, async (req, res) => {
+    const { key, admin } = req.body;
+    if (!key) return res.status(400).send("NO_KEY");
 
-    res.send("");
-});
+    keys.set(key, { hwid: null });
 
-/* ================= ADMIN ================= */
-
-app.post("/admin/key/add", (req, res) => {
-    const { secret, key } = req.body;
-    if (secret !== SECRET_KEY) return res.sendStatus(403);
-
-    const db = loadDB();
-    if (db[key]) return res.status(400).send("Key exists");
-
-    db[key] = { hwid: null, created: Date.now() };
-    saveDB(db);
+    await logWebhook("🔑 Key Added", [
+        { name: "Key", value: key },
+        { name: "By", value: admin }
+    ]);
 
     res.send("OK");
 });
 
-app.post("/admin/key/delete", (req, res) => {
-    const { secret, key } = req.body;
-    if (secret !== SECRET_KEY) return res.sendStatus(403);
+app.post("/admin/key/delete", requireAdmin, async (req, res) => {
+    const { key, admin } = req.body;
+    if (!keys.has(key)) return res.status(404).send("NOT_FOUND");
 
-    const db = loadDB();
-    delete db[key];
-    saveDB(db);
+    keys.delete(key);
+
+    await logWebhook("🗑️ Key Deleted", [
+        { name: "Key", value: key },
+        { name: "By", value: admin }
+    ]);
 
     res.send("OK");
 });
 
-app.get("/admin/key/list", (req, res) => {
-    if (req.query.secret !== SECRET_KEY) return res.sendStatus(403);
-    res.json(loadDB());
+app.get("/admin/key/list", requireAdmin, (req, res) => {
+    res.json([...keys.entries()]);
 });
 
-app.listen(PORT, () => {
-    console.log("Auth server running on port", PORT);
+// ================= ROBLOX AUTH =================
+app.get("/v9/auth", async (req, res) => {
+    const { k, hwid, experienceId } = req.query;
+
+    if (!k || !hwid || !experienceId) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    if (!keys.has(k)) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    const data = keys.get(k);
+
+    if (data.hwid === null) {
+        data.hwid = hwid;
+        keys.set(k, data);
+
+        await logWebhook("🔒 HWID Locked", [
+            { name: "Key", value: k },
+            { name: "HWID", value: hwid },
+            { name: "PlaceId", value: experienceId }
+        ]);
+    }
+
+    if (data.hwid !== hwid) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    res.status(200).send("OK");
 });
+
+// ================= START =================
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log("API ONLINE"));
