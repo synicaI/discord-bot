@@ -1,113 +1,108 @@
+import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
 import express from "express";
-import { Client, GatewayIntentBits, Partials } from "discord.js";
 
-// ================== CONFIG ==================
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const LOG_CHANNEL_ID = "1467847883456778358"; // logging channel
-const ALLOWED_USERS = [
-    "1001562621381714080",
-    "1375016755822596096",
-    "1389631531114430594",
-    "1255892341206552607"
-];
-const AUTH_PORT = process.env.PORT || 8080;
-
-// ================== KEYS ==================
-const keys = new Map(); // { key: { hwid: string | null, expires: string | null } }
-
-// ================== EXPRESS SERVER ==================
 const app = express();
 app.use(express.json());
 
-// Roblox authentication endpoint
-app.get("/v9/auth", async (req, res) => {
-    const { k, hwid, experienceId } = req.query;
+// ===== CONFIG =====
+const BOT_TOKEN = process.env.BOT_TOKEN; // your Discord bot token
+const LOG_CHANNEL_ID = "1467847883456778358"; // logs will go here
+const ADMIN_IDS = ["1001562621381714080","1375016755822596096","1389631531114430594","1255892341206552607"]; // who can use admin commands
 
-    if (!k || !hwid || !experienceId) return res.status(401).send("AUTH_FAIL");
-    if (!keys.has(k)) return res.status(401).send("AUTH_FAIL");
+// ===== KEYS =====
+const keys = new Map();
 
-    const data = keys.get(k);
+// ===== DISCORD BOT =====
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-    // lock HWID on first use
-    if (!data.hwid) {
-        data.hwid = hwid;
-        keys.set(k, data);
-
-        // log to Discord
-        logToDiscord(`🔒 HWID Locked`, `Key: ${k}\nHWID: ${hwid}\nExperienceId: ${experienceId}`);
-    }
-
-    if (data.hwid !== hwid) return res.status(401).send("AUTH_FAIL");
-    res.send(""); // success
+client.once("ready", () => {
+    console.log(`Discord bot ready as ${client.user.tag}`);
 });
 
-app.listen(AUTH_PORT, () => console.log(`Auth server running on port ${AUTH_PORT}`));
-
-// ================== DISCORD BOT ==================
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ],
-    partials: [Partials.Channel]
-});
-
-// Helper: log messages to specific channel
-async function logToDiscord(title, message) {
-    try {
-        const channel = await client.channels.fetch(LOG_CHANNEL_ID);
-        if (!channel) return;
-        channel.send(`**${title}**\n${message}`);
-    } catch (err) {
-        console.error("Failed to log to Discord:", err);
-    }
+// send log embed
+async function logDiscord(title, description, color = 0x2b2d31) {
+    const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    if (!channel) return;
+    const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(color)
+        .setTimestamp();
+    channel.send({ embeds: [embed] }).catch(() => {});
 }
 
-// Command handling
+// ===== DISCORD COMMANDS =====
 client.on("messageCreate", async (message) => {
+    if (!message.content.startsWith("!")) return;
     if (message.author.bot) return;
-    if (!ALLOWED_USERS.includes(message.author.id)) return;
 
-    const args = message.content.trim().split(/\s+/);
-    const cmd = args.shift()?.toLowerCase();
-    if (!cmd) return;
+    const [cmd, ...args] = message.content.slice(1).split(" ");
 
-    if (cmd === "!key") {
-        const sub = args.shift()?.toLowerCase();
-        if (!sub) return message.reply("Please provide a subcommand: add, delete, list");
+    if (!ADMIN_IDS.includes(message.author.id)) {
+        return message.reply("You do not have permission to use this bot.");
+    }
+
+    if (cmd === "key") {
+        const sub = args[0];
+        if (!sub) return message.reply("Usage: !key <add|delete|list> <key>");
 
         if (sub === "add") {
-            const key = args.shift();
-            if (!key) return message.reply("Please provide a key to add");
+            const k = args[1];
+            if (!k) return message.reply("Provide a key to add.");
 
-            keys.set(key, { hwid: null, expires: null });
-            message.reply(`✅ Key **${key}** added successfully`);
-            logToDiscord("🔑 Key Added", `Key: ${key}\nBy: ${message.author.tag}`);
+            keys.set(k.trim(), { hwid: null, expires: null });
+            message.reply(`Key \`${k.trim()}\` added.`);
+            await logDiscord("🔑 Key Added", `Key: \`${k.trim()}\`\nBy: <@${message.author.id}>`);
         }
 
         else if (sub === "delete") {
-            const key = args.shift();
-            if (!key) return message.reply("Please provide a key to delete");
-            if (!keys.has(key)) return message.reply("❌ Key not found");
+            const k = args[1];
+            if (!k) return message.reply("Provide a key to delete.");
 
-            keys.delete(key);
-            message.reply(`🗑️ Key **${key}** deleted`);
-            logToDiscord("🗑️ Key Deleted", `Key: ${key}\nBy: ${message.author.tag}`);
+            if (!keys.has(k.trim())) return message.reply("Key not found.");
+            keys.delete(k.trim());
+            message.reply(`Key \`${k.trim()}\` deleted.`);
+            await logDiscord("🗑️ Key Deleted", `Key: \`${k.trim()}\`\nBy: <@${message.author.id}>`, 0xff0000);
         }
 
         else if (sub === "list") {
-            if (keys.size === 0) return message.reply("No keys available");
-            const list = [...keys.entries()].map(([k, v]) => `${k} | HWID: ${v.hwid ?? "none"}`).join("\n");
-            message.reply(`📜 Keys:\n${list}`);
+            if (keys.size === 0) return message.reply("No keys added yet.");
+            const list = [...keys.keys()].join(", ");
+            message.reply(`Keys:\n${list}`);
         }
 
         else {
-            message.reply("Unknown subcommand. Use add, delete, or list");
+            message.reply("Unknown subcommand. Use add, delete, list.");
         }
     }
 });
 
-// ================== LOGIN ==================
-client.once("ready", () => console.log(`Discord bot ready as ${client.user.tag}`));
-client.login(DISCORD_TOKEN);
+// ===== EXPRESS ROBLOX AUTH =====
+app.get("/v9/auth", async (req, res) => {
+    let { k, hwid, experienceId } = req.query;
+    if (!k || !hwid || !experienceId) return res.status(401).send("AUTH_FAIL");
+
+    k = String(k).trim();
+
+    if (!keys.has(k)) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    const data = keys.get(k);
+
+    // HWID lock
+    if (data.hwid === null) {
+        data.hwid = hwid;
+        keys.set(k, data);
+        await logDiscord("🔒 HWID Locked", `Key: \`${k}\`\nHWID: \`${hwid}\`\nExperienceId: \`${experienceId}\``);
+    }
+
+    if (data.hwid !== hwid) return res.status(401).send("AUTH_FAIL");
+
+    return res.status(200).send("");
+});
+
+// ===== START =====
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Auth server running on port ${PORT}`));
+client.login(BOT_TOKEN);
