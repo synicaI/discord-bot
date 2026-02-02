@@ -2,11 +2,11 @@
   "name": "roblox-auth",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "discord.js": "^14.15.1" // make sure this is here
+  },
   "scripts": {
     "start": "node index.js"
-  },
-  "dependencies": {
-    "express": "^4.19.2"
   }
 }
