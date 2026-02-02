@@ -1,89 +1,113 @@
-// ================= DISCORD BOT =================
-import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
+import express from "express";
+import { Client, GatewayIntentBits, Partials } from "discord.js";
 
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN; // your bot token
-const LOG_CHANNEL_ID = "1467847883456778358"; // channel for logging
-const ALLOWED_USERS = [ // hardcoded allowed user IDs
-  "1001562621381714080",
-  "1375016755822596096",
-  "1389631531114430594",
-  "1255892341206552607"
+// ================== CONFIG ==================
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const LOG_CHANNEL_ID = "1467847883456778358"; // logging channel
+const ALLOWED_USERS = [
+    "1001562621381714080",
+    "1375016755822596096",
+    "1389631531114430594",
+    "1255892341206552607"
 ];
+const AUTH_PORT = process.env.PORT || 8080;
 
-if (!DISCORD_TOKEN) {
-    console.error("Discord token not set in DISCORD_TOKEN");
-    process.exit(1);
-}
+// ================== KEYS ==================
+const keys = new Map(); // { key: { hwid: string | null, expires: string | null } }
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+// ================== EXPRESS SERVER ==================
+const app = express();
+app.use(express.json());
+
+// Roblox authentication endpoint
+app.get("/v9/auth", async (req, res) => {
+    const { k, hwid, experienceId } = req.query;
+
+    if (!k || !hwid || !experienceId) return res.status(401).send("AUTH_FAIL");
+    if (!keys.has(k)) return res.status(401).send("AUTH_FAIL");
+
+    const data = keys.get(k);
+
+    // lock HWID on first use
+    if (!data.hwid) {
+        data.hwid = hwid;
+        keys.set(k, data);
+
+        // log to Discord
+        logToDiscord(`🔒 HWID Locked`, `Key: ${k}\nHWID: ${hwid}\nExperienceId: ${experienceId}`);
+    }
+
+    if (data.hwid !== hwid) return res.status(401).send("AUTH_FAIL");
+    res.send(""); // success
 });
 
-// Helper: send embed logs
-async function logAction(title, fields) {
-    const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (!channel?.isTextBased()) return;
+app.listen(AUTH_PORT, () => console.log(`Auth server running on port ${AUTH_PORT}`));
 
-    const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setColor(0x2b2d31)
-        .addFields(fields)
-        .setTimestamp(new Date());
+// ================== DISCORD BOT ==================
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ],
+    partials: [Partials.Channel]
+});
 
-    channel.send({ embeds: [embed] });
+// Helper: log messages to specific channel
+async function logToDiscord(title, message) {
+    try {
+        const channel = await client.channels.fetch(LOG_CHANNEL_ID);
+        if (!channel) return;
+        channel.send(`**${title}**\n${message}`);
+    } catch (err) {
+        console.error("Failed to log to Discord:", err);
+    }
 }
 
+// Command handling
 client.on("messageCreate", async (message) => {
-    if (message.author.bot) return; // ignore bots
-    if (!ALLOWED_USERS.includes(message.author.id)) {
-        return message.reply("❌ You are not allowed to use this command.");
-    }
+    if (message.author.bot) return;
+    if (!ALLOWED_USERS.includes(message.author.id)) return;
 
     const args = message.content.trim().split(/\s+/);
-    const cmd = args.shift().toLowerCase();
+    const cmd = args.shift()?.toLowerCase();
+    if (!cmd) return;
 
-    // ===== KEY ADD =====
-    if (cmd === "!key" && args[0] === "add") {
-        const key = args[1];
-        if (!key) return message.reply("❌ Usage: !key add <key>");
+    if (cmd === "!key") {
+        const sub = args.shift()?.toLowerCase();
+        if (!sub) return message.reply("Please provide a subcommand: add, delete, list");
 
-        if (keys.has(key)) return message.reply("❌ Key already exists.");
-        keys.set(key, { hwid: null, expires: null });
+        if (sub === "add") {
+            const key = args.shift();
+            if (!key) return message.reply("Please provide a key to add");
 
-        await logAction("🔑 Key Added", [
-            { name: "Key", value: key, inline: true },
-            { name: "By", value: message.author.tag, inline: true }
-        ]);
+            keys.set(key, { hwid: null, expires: null });
+            message.reply(`✅ Key **${key}** added successfully`);
+            logToDiscord("🔑 Key Added", `Key: ${key}\nBy: ${message.author.tag}`);
+        }
 
-        return message.reply(`✅ Key \`${key}\` added successfully.`);
-    }
+        else if (sub === "delete") {
+            const key = args.shift();
+            if (!key) return message.reply("Please provide a key to delete");
+            if (!keys.has(key)) return message.reply("❌ Key not found");
 
-    // ===== KEY DELETE =====
-    if (cmd === "!key" && args[0] === "delete") {
-        const key = args[1];
-        if (!key) return message.reply("❌ Usage: !key delete <key>");
+            keys.delete(key);
+            message.reply(`🗑️ Key **${key}** deleted`);
+            logToDiscord("🗑️ Key Deleted", `Key: ${key}\nBy: ${message.author.tag}`);
+        }
 
-        if (!keys.has(key)) return message.reply("❌ Key not found.");
-        keys.delete(key);
+        else if (sub === "list") {
+            if (keys.size === 0) return message.reply("No keys available");
+            const list = [...keys.entries()].map(([k, v]) => `${k} | HWID: ${v.hwid ?? "none"}`).join("\n");
+            message.reply(`📜 Keys:\n${list}`);
+        }
 
-        await logAction("🗑️ Key Deleted", [
-            { name: "Key", value: key, inline: true },
-            { name: "By", value: message.author.tag, inline: true }
-        ]);
-
-        return message.reply(`✅ Key \`${key}\` deleted successfully.`);
-    }
-
-    // ===== KEY LIST =====
-    if (cmd === "!key" && args[0] === "list") {
-        if (keys.size === 0) return message.reply("⚠️ No keys in the system.");
-        const list = [...keys.keys()].join(", ");
-        return message.reply(`🔑 Keys: ${list}`);
+        else {
+            message.reply("Unknown subcommand. Use add, delete, or list");
+        }
     }
 });
 
-client.once("ready", () => {
-    console.log(`Discord bot logged in as ${client.user.tag}`);
-});
-
+// ================== LOGIN ==================
+client.once("ready", () => console.log(`Discord bot ready as ${client.user.tag}`));
 client.login(DISCORD_TOKEN);
