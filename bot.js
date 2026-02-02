@@ -1,89 +1,76 @@
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from "discord.js";
+import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
-import "dotenv/config";
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+const ADMINS = new Set([
+    "1001562621381714080",
+    "1375016755822596096",
+    "1389631531114430594",
+    "1255892341206552607"
+]);
+
 const API = "https://skillful-achievement-production-f080.up.railway.app";
+const PREFIX = "!key";
 
-const ADMIN_IDS = [
-  "1001562621381714080",
-  "1375016755822596096",
-  "1389631531114430594",
-  "1255892341206552607"
-];
+client.on("messageCreate", async (msg) => {
+    if (!msg.content.startsWith(PREFIX)) return;
+    if (!ADMINS.has(msg.author.id)) return;
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("keyadd")
-    .setDescription("Add a key")
-    .addStringOption(o => o.setName("key").setDescription("Key").setRequired(true)),
+    const args = msg.content.split(" ").slice(1);
+    const sub = args.shift();
 
-  new SlashCommandBuilder()
-    .setName("keydelete")
-    .setDescription("Delete a key")
-    .addStringOption(o => o.setName("key").setDescription("Key").setRequired(true)),
+    if (sub === "add") {
+        const key = args[0];
+        if (!key) return;
 
-  new SlashCommandBuilder()
-    .setName("keylist")
-    .setDescription("List keys")
-].map(c => c.toJSON());
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-client.on("interactionCreate", async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    if (!ADMIN_IDS.includes(interaction.user.id)) {
-        return interaction.reply({ content: "❌ No permission", ephemeral: true });
-    }
-
-    const headers = {
-        "Content-Type": "application/json",
-        "x-admin-id": interaction.user.id
-    };
-
-    if (interaction.commandName === "keyadd") {
-        const key = interaction.options.getString("key");
-
-        await fetch(`${API}/admin/key/add`, {
+        await fetch(API + "/admin/key/add", {
             method: "POST",
-            headers,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 key,
-                admin: interaction.user.tag
+                admin: `${msg.author.tag} (${msg.author.id})`
             })
         });
 
-        return interaction.reply({ content: `✅ Added \`${key}\``, ephemeral: true });
+        msg.reply("✅ Key added");
     }
 
-    if (interaction.commandName === "keydelete") {
-        const key = interaction.options.getString("key");
+    if (sub === "delete") {
+        const key = args[0];
+        if (!key) return;
 
-        await fetch(`${API}/admin/key/delete`, {
+        await fetch(API + "/admin/key/delete", {
             method: "POST",
-            headers,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 key,
-                admin: interaction.user.tag
+                admin: `${msg.author.tag} (${msg.author.id})`
             })
         });
 
-        return interaction.reply({ content: `🗑 Deleted \`${key}\``, ephemeral: true });
+        msg.reply("🗑️ Key deleted");
     }
 
-    if (interaction.commandName === "keylist") {
-        const r = await fetch(`${API}/admin/key/list`, { headers });
+    if (sub === "list") {
+        const r = await fetch(API + "/admin/key/list");
         const data = await r.json();
 
-        return interaction.reply({
-            content: data.map(x => `• ${x[0]}`).join("\n") || "No keys",
-            ephemeral: true
-        });
+        if (!data.length) {
+            msg.reply("No keys");
+            return;
+        }
+
+        msg.reply(
+            data.map(([k, v]) => `${k} | HWID: ${v.hwid ?? "null"}`).join("\n")
+        );
     }
 });
 
-client.login(TOKEN);
+client.login(process.env.BOT_TOKEN);
