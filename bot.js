@@ -2,57 +2,70 @@ import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const API_URL = process.env.AUTH_URL;
-const SECRET = process.env.SECRET_KEY;
+// ALLOWED USER IDS
+const ADMINS = new Set([
+    "1001562621381714080",
+    "1375016755822596096",
+    "1389631531114430594",
+    "1255892341206552607"
+]);
 
-const ALLOWED_USERS = [
-  "1001562621381714080",
-  "1375016755822596096",
-  "1389631531114430594",
-  "1255892341206552607"
-];
+const API = "https://skillful-achievement-production-f080.up.railway.app";
+const PREFIX = "!key";
 
-async function call(path, body) {
-  const res = await fetch(API_URL + path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, secret: SECRET })
-  });
-  return res.text();
-}
+client.on("messageCreate", async (msg) => {
+    if (!msg.content.startsWith(PREFIX)) return;
+    if (!ADMINS.has(msg.author.id)) return;
 
-client.on("messageCreate", async msg => {
-  if (!msg.content.startsWith("!key")) return;
-  if (!ALLOWED_USERS.includes(msg.author.id))
-    return msg.reply("❌ No permission");
+    const args = msg.content.split(" ").slice(1);
+    const sub = args.shift();
 
-  const [_, cmd, a, b] = msg.content.split(" ");
+    if (sub === "add") {
+        const key = args[0];
+        if (!key) return msg.reply("Missing key");
 
-  if (cmd === "add") {
-    if (!a) return msg.reply("Usage: !key add <key> [days]");
-    const expires = b ? Date.now() + Number(b) * 86400000 : null;
-    return msg.reply(await call("/admin/key/add", { key: a, expires }));
-  }
+        await fetch(API + "/admin/key/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key })
+        });
 
-  if (cmd === "reset") {
-    return msg.reply(await call("/admin/key/reset", { key: a }));
-  }
+        msg.reply("✅ Key added");
+    }
 
-  if (cmd === "delete") {
-    return msg.reply(await call("/admin/key/delete", { key: a }));
-  }
+    if (sub === "delete") {
+        const key = args[0];
+        if (!key) return msg.reply("Missing key");
 
-  if (cmd === "list") {
-    return msg.reply("```" + await call("/admin/key/list", {}) + "```");
-  }
+        await fetch(API + "/admin/key/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key })
+        });
+
+        msg.reply("🗑️ Key deleted");
+    }
+
+    if (sub === "list") {
+        const r = await fetch(API + "/admin/key/list");
+        const data = await r.json();
+
+        if (!data.length) {
+            msg.reply("No keys");
+            return;
+        }
+
+        msg.reply(
+            data.map(([k, v]) => `${k} | HWID: ${v.hwid ?? "null"}`).join("\n")
+        );
+    }
 });
 
-client.login(BOT_TOKEN);
+client.login(process.env.BOT_TOKEN);
