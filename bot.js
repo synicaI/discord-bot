@@ -9,7 +9,6 @@ const client = new Client({
     ]
 });
 
-// ALLOWED USER IDS
 const ADMINS = new Set([
     "1001562621381714080",
     "1375016755822596096",
@@ -29,12 +28,15 @@ client.on("messageCreate", async (msg) => {
 
     if (sub === "add") {
         const key = args[0];
-        if (!key) return msg.reply("Missing key");
+        if (!key) return;
 
         await fetch(API + "/admin/key/add", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ key })
+            body: JSON.stringify({
+                key,
+                admin: `${msg.author.tag} (${msg.author.id})`
+            })
         });
 
         msg.reply("✅ Key added");
@@ -42,12 +44,15 @@ client.on("messageCreate", async (msg) => {
 
     if (sub === "delete") {
         const key = args[0];
-        if (!key) return msg.reply("Missing key");
+        if (!key) return;
 
         await fetch(API + "/admin/key/delete", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ key })
+            body: JSON.stringify({
+                key,
+                admin: `${msg.author.tag} (${msg.author.id})`
+            })
         });
 
         msg.reply("🗑️ Key deleted");
