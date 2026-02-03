@@ -1,8 +1,8 @@
 const { Client, GatewayIntentBits } = require("discord.js");
+const { keys } = require("./index");
 
-const TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_ROLE_ID = "1461424207932948728";
-const SERVER_URL = "https://skillful-achievement-production-f080.up.railway.app";
 
 const client = new Client({
   intents: [
@@ -12,75 +12,68 @@ const client = new Client({
   ]
 });
 
-client.once("ready", () => {
-  console.log(`🤖 Bot logged in as ${client.user.tag}`);
-});
+function isAdmin(member) {
+  return member.roles.cache.has(ADMIN_ROLE_ID);
+}
 
-client.on("messageCreate", async (message) => {
-  if (message.author.bot) return;
-  if (!message.content.startsWith("!key")) return;
+client.on("messageCreate", async (msg) => {
+  if (msg.author.bot) return;
+  if (!msg.content.startsWith("!key")) return;
 
-  // Role check
-  if (!message.member.roles.cache.has(ADMIN_ROLE_ID)) {
-    return message.reply("❌ You are not an admin.");
+  if (!isAdmin(msg.member)) {
+    return msg.reply("❌ You are not an admin.");
   }
 
-  const args = message.content.trim().split(/\s+/);
-  // args[0] = !key
-  const action = args[1];
-  const key = args[2];
+  const args = msg.content.split(" ").slice(1);
+  const sub = args[0];
 
-  // ===== LIST =====
-  if (action === "list") {
-    try {
-      const res = await fetch(`${SERVER_URL}/admin/key/list`);
-      const data = await res.json();
+  // ================= ADD =================
+  if (sub === "add") {
+    const key = args[1];
+    if (!key) return msg.reply("Usage: `!key add <key>`");
 
-      if (!data || Object.keys(data).length === 0) {
-        return message.reply("📭 No keys stored.");
-      }
+    keys[key] = { hwid: null, expires: null };
+    return msg.reply(`✅ Key **${key}** added.`);
+  }
 
-      return message.reply(
-        `📋 Keys:\n\`\`\`${Object.keys(data).join("\n")}\`\`\``
-      );
-    } catch (err) {
-      console.error(err);
-      return message.reply("❌ Failed to fetch key list.");
+  // ================= DELETE =================
+  if (sub === "delete") {
+    const key = args[1];
+    if (!keys[key]) return msg.reply("❌ Key not found.");
+
+    delete keys[key];
+    return msg.reply(`🗑️ Key **${key}** deleted.`);
+  }
+
+  // ================= LIST =================
+  if (sub === "list") {
+    const list = Object.keys(keys);
+
+    if (list.length === 0) {
+      return msg.reply("No keys found.");
     }
-  }
 
-  // From here on, ADD / DELETE REQUIRE a key
-  if (!action || !key) {
-    return message.reply(
-      "Usage:\n`!key add <key>`\n`!key delete <key>`\n`!key list`"
+    return msg.reply(
+      "**🔑 Keys:**\n```" + list.join("\n") + "```"
     );
   }
 
-  try {
-    if (action === "add") {
-      await fetch(`${SERVER_URL}/admin/key/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key })
-      });
-      return message.reply(`✅ Key **${key}** added.`);
-    }
+  // ================= HWID RESET =================
+  if (sub === "hwid" && args[1] === "reset") {
+    const key = args[2];
+    if (!keys[key]) return msg.reply("❌ Key not found.");
 
-    if (action === "delete") {
-      await fetch(`${SERVER_URL}/admin/key/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key })
-      });
-      return message.reply(`🗑️ Key **${key}** deleted.`);
-    }
-
-    return message.reply("❌ Unknown action.");
-
-  } catch (err) {
-    console.error(err);
-    return message.reply("❌ Error talking to auth server.");
+    keys[key].hwid = null;
+    return msg.reply(`🔁 HWID reset for **${key}**`);
   }
+
+  msg.reply(
+    "Usage:\n" +
+    "`!key add <key>`\n" +
+    "`!key delete <key>`\n" +
+    "`!key list`\n" +
+    "`!key hwid reset <key>`"
+  );
 });
 
-client.login(TOKEN);
+client.login(BOT_TOKEN);
