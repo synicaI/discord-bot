@@ -1,59 +1,55 @@
 import express from "express";
 const app = express();
 
+app.use(express.json());
+
 const PORT = process.env.PORT || 8080;
 const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
-// IN-MEMORY KEYS
-const keys = {};
+// ===== SINGLE SOURCE OF TRUTH =====
+const keys = {}; // { key: { hwid: string|null } }
 
-// ===== HELPERS =====
-function unauthorized(res, reason) {
-  console.log("AUTH FAIL:", reason);
-  return res.status(200).send(reason);
-}
-
-// ===== AUTH =====
+// ===== AUTH ROUTE (ROBLOX) =====
 app.get("/v9/auth", (req, res) => {
-  const { SECRET_KEY: secret, k, hwid } = req.query;
+  const { secret, k, hwid } = req.query;
 
-  if (secret !== SECRET_KEY) return unauthorized(res, "Invalid secret");
-  if (!k || !keys[k]) return unauthorized(res, "Key not found");
-  if (!hwid) return unauthorized(res, "HWID missing");
+  if (secret !== SECRET_KEY) return res.status(401).send("bad secret");
+  if (!k || !keys[k]) return res.status(401).send("key not found");
 
   const data = keys[k];
 
   if (!data.hwid) {
     data.hwid = hwid;
-    console.log(`🔒 HWID locked for ${k}`);
   } else if (data.hwid !== hwid) {
-    return unauthorized(res, "HWID mismatch");
+    return res.status(401).send("hwid mismatch");
   }
 
-  return res.status(200).send(""); // success
+  return res.status(200).send("");
 });
 
-// ===== BOT API =====
-app.get("/bot/add", (req, res) => {
-  const { secret, key } = req.query;
-  if (secret !== SECRET_KEY) return res.send("NO");
+// ===== BOT ROUTES =====
+app.post("/bot/key/add", (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.json({ ok: false });
+
   keys[key] = { hwid: null };
-  res.send("OK");
+  return res.json({ ok: true });
 });
 
-app.get("/bot/list", (req, res) => {
-  const { secret } = req.query;
-  if (secret !== SECRET_KEY) return res.send("NO");
-  res.json(Object.keys(keys));
+app.get("/bot/key/list", (req, res) => {
+  return res.json(Object.keys(keys));
 });
 
-app.get("/bot/reset", (req, res) => {
-  const { secret, key } = req.query;
-  if (secret !== SECRET_KEY) return res.send("NO");
-  if (keys[key]) keys[key].hwid = null;
-  res.send("OK");
+app.post("/bot/key/reset", (req, res) => {
+  const { key } = req.body;
+  if (!keys[key]) return res.json({ ok: false });
+
+  keys[key].hwid = null;
+  return res.json({ ok: true });
 });
 
 app.listen(PORT, () => {
   console.log("Auth server running on", PORT);
 });
+
+import "./bot.js";
