@@ -1,76 +1,67 @@
-import { Client, GatewayIntentBits } from "discord.js";
-import fetch from "node-fetch";
-
+const { Client, GatewayIntentBits } = require("discord.js");
+const { keys } = require("./index"); // SHARE keys object
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-const ADMINS = new Set([
-    "1001562621381714080",
-    "1375016755822596096",
-    "1389631531114430594",
-    "1255892341206552607"
-]);
+const PREFIX = "!";
+const ADMIN_ROLE_ID = "1461424207932948728";
 
-const API = "https://skillful-achievement-production-f080.up.railway.app";
-const PREFIX = "!key";
+client.on("ready", () => {
+  console.log(`Bot logged in as ${client.user.tag}`);
+});
 
 client.on("messageCreate", async (msg) => {
-    if (!msg.content.startsWith(PREFIX)) return;
-    if (!ADMINS.has(msg.author.id)) return;
+  if (msg.author.bot) return;
+  if (!msg.content.startsWith(PREFIX)) return;
 
-    const args = msg.content.split(" ").slice(1);
-    const sub = args.shift();
+  // ROLE CHECK
+  if (!msg.member.roles.cache.has(ADMIN_ROLE_ID))
+    return msg.reply("❌ You are not an admin!");
 
-    if (sub === "add") {
-        const key = args[0];
-        if (!key) return;
+  const args = msg.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift()?.toLowerCase();
 
-        await fetch(API + "/admin/key/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                key,
-                admin: `${msg.author.tag} (${msg.author.id})`
-            })
-        });
+  // !key add <key>
+  if (cmd === "key" && args[0] === "add") {
+    const key = args[1];
+    if (!key) return msg.reply("❌ Missing key");
 
-        msg.reply("✅ Key added");
-    }
+    keys[key] = { hwid: null, expires: null };
+    return msg.reply(`✅ Key added:\n\`${key}\``);
+  }
 
-    if (sub === "delete") {
-        const key = args[0];
-        if (!key) return;
+  // !key delete <key>
+  if (cmd === "key" && args[0] === "delete") {
+    const key = args[1];
+    if (!keys[key]) return msg.reply("❌ Key not found");
 
-        await fetch(API + "/admin/key/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                key,
-                admin: `${msg.author.tag} (${msg.author.id})`
-            })
-        });
+    delete keys[key];
+    return msg.reply(`🗑️ Key deleted:\n\`${key}\``);
+  }
 
-        msg.reply("🗑️ Key deleted");
-    }
+  // !key list
+  if (cmd === "key" && args[0] === "list") {
+    const list = Object.keys(keys);
+    if (!list.length) return msg.reply("No keys.");
 
-    if (sub === "list") {
-        const r = await fetch(API + "/admin/key/list");
-        const data = await r.json();
+    return msg.reply(
+      "**Keys:**\n" + list.map(k => `\`${k}\``).join("\n")
+    );
+  }
 
-        if (!data.length) {
-            msg.reply("No keys");
-            return;
-        }
+  // !key reset <key>
+  if (cmd === "key" && args[0] === "reset") {
+    const key = args[1];
+    if (!keys[key]) return msg.reply("❌ Key not found");
 
-        msg.reply(
-            data.map(([k, v]) => `${k} | HWID: ${v.hwid ?? "null"}`).join("\n")
-        );
-    }
+    keys[key].hwid = null;
+    return msg.reply(`🔄 HWID reset for:\n\`${key}\``);
+  }
 });
 
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.DISCORD_TOKEN);
