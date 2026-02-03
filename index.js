@@ -1,18 +1,17 @@
 const express = require("express");
 const app = express();
 
+app.use(express.json());
+
 // ================= CONFIG =================
 const PORT = process.env.PORT || 8080;
 const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
-// ================= KEYS (SHARED) =================
+// ================= KEYS =================
 const keys = {
   "a9c3f72b5e4d8190f1c7b2e3d6a98c41": { hwid: null, expires: null },
   "x972jsdjdinsdvbdozopnksd92ejd919": { hwid: null, expires: null }
 };
-
-// EXPORT KEYS SO BOT CAN MODIFY THEM
-module.exports.keys = keys;
 
 // ================= HELPERS =================
 function unauthorized(res, reason = "Unauthorized!") {
@@ -34,18 +33,17 @@ app.get("/v9/auth", (req, res) => {
 
   const keyData = keys[k];
 
-  if (keyData.expires && new Date() > keyData.expires)
-    return unauthorized(res, "Key expired");
+  if (keyData.expires && new Date() > keyData.expires) return unauthorized(res, "Key expired");
 
   if (!keyData.hwid) {
     keyData.hwid = hwid;
     console.log(`HWID locked for key ${k}: ${hwid}`);
   } else if (keyData.hwid !== hwid) {
-    return unauthorized(res, "HWID mismatch");
+    return unauthorized(res, `HWID mismatch. Expected ${keyData.hwid}, got ${hwid}`);
   }
 
-  console.log(`AUTH SUCCESS: ${k}`);
-  return res.status(200).send("");
+  console.log(`AUTH SUCCESS: key ${k} for HWID ${hwid}`);
+  return res.status(200).send(""); // empty string = success
 });
 
 // ================= HWID RESET =================
