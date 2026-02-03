@@ -1,11 +1,13 @@
 const { Client, GatewayIntentBits } = require("discord.js");
-const { keys } = require("./index"); // SHARE keys object
+const { keys } = require("./index"); // shared keys object
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers, // <--- Needed to check roles
+  ],
 });
 
 const PREFIX = "!";
@@ -19,14 +21,15 @@ client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
   if (!msg.content.startsWith(PREFIX)) return;
 
-  // ROLE CHECK
-  if (!msg.member.roles.cache.has(ADMIN_ROLE_ID))
+  // Fetch member to ensure roles are available
+  const member = await msg.guild.members.fetch(msg.author.id);
+
+  if (!member.roles.cache.has(ADMIN_ROLE_ID))
     return msg.reply("❌ You are not an admin!");
 
   const args = msg.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift()?.toLowerCase();
 
-  // !key add <key>
   if (cmd === "key" && args[0] === "add") {
     const key = args[1];
     if (!key) return msg.reply("❌ Missing key");
@@ -35,7 +38,6 @@ client.on("messageCreate", async (msg) => {
     return msg.reply(`✅ Key added:\n\`${key}\``);
   }
 
-  // !key delete <key>
   if (cmd === "key" && args[0] === "delete") {
     const key = args[1];
     if (!keys[key]) return msg.reply("❌ Key not found");
@@ -44,17 +46,13 @@ client.on("messageCreate", async (msg) => {
     return msg.reply(`🗑️ Key deleted:\n\`${key}\``);
   }
 
-  // !key list
   if (cmd === "key" && args[0] === "list") {
     const list = Object.keys(keys);
     if (!list.length) return msg.reply("No keys.");
 
-    return msg.reply(
-      "**Keys:**\n" + list.map(k => `\`${k}\``).join("\n")
-    );
+    return msg.reply("**Keys:**\n" + list.map((k) => `\`${k}\``).join("\n"));
   }
 
-  // !key reset <key>
   if (cmd === "key" && args[0] === "reset") {
     const key = args[1];
     if (!keys[key]) return msg.reply("❌ Key not found");
