@@ -1,11 +1,10 @@
 const express = require("express");
 const app = express();
-
 app.use(express.json());
 
 // ================= CONFIG =================
 const PORT = process.env.PORT || 8080;
-const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+const SECRET_KEY = process.env.SECRET_KEY || "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
 // ================= KEYS =================
 const keys = {
