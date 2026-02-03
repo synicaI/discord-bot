@@ -4,7 +4,7 @@ app.use(express.json());
 
 // ================= CONFIG =================
 const PORT = process.env.PORT || 8080;
-const SECRET_KEY = process.env.SECRET_KEY || "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
 // ================= KEYS =================
 const keys = {
@@ -54,6 +54,29 @@ app.get("/reset-hwid", (req, res) => {
   keys[k].hwid = null;
   console.log(`HWID RESET for key ${k}`);
   return res.status(200).send("HWID reset successfully");
+});
+
+// ================= ADMIN ROUTES FOR DISCORD BOT =================
+app.post("/admin/key/add", (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).send("Missing key");
+
+  keys[key] = { hwid: null, expires: null };
+  console.log(`✅ Key ${key} added`);
+  res.send(`Key ${key} added`);
+});
+
+app.post("/admin/key/delete", (req, res) => {
+  const { key } = req.body;
+  if (!keys[key]) return res.status(404).send("Not found");
+
+  delete keys[key];
+  console.log(`🗑️ Key ${key} deleted`);
+  res.send(`Key ${key} deleted`);
+});
+
+app.get("/admin/key/list", (req, res) => {
+  res.json(keys);
 });
 
 // ================= START SERVER =================
