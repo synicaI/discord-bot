@@ -1,8 +1,16 @@
 const express = require("express");
 const fs = require("fs");
+const { Client, GatewayIntentBits } = require("discord.js");
 
-const app = express();
-app.use(express.json());
+/* ================= CONFIG ================= */
+
+const BOT_TOKEN = process.env.BOT_TOKEN; // REQUIRED
+const ALLOWED_USERS = [
+    "1001562621381714080",
+    "1375016755822596096",
+    "1389631531114430594",
+    "1255892341206552607"
+];
 
 const DATA_FILE = "./keys.json";
 
@@ -14,45 +22,74 @@ function loadKeys() {
     if (!fs.existsSync(DATA_FILE)) {
         fs.writeFileSync(DATA_FILE, "{}");
     }
-
-    const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    keys = new Map(Object.entries(raw));
+    keys = new Map(Object.entries(JSON.parse(fs.readFileSync(DATA_FILE))));
 }
 
 function saveKeys() {
-    const obj = Object.fromEntries(keys);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(obj, null, 2));
+    fs.writeFileSync(DATA_FILE, JSON.stringify(Object.fromEntries(keys), null, 2));
 }
 
 loadKeys();
 
-/* ================= ADMIN ROUTES ================= */
+/* ================= DISCORD BOT ================= */
 
-app.post("/admin/key/add", (req, res) => {
-    const { key } = req.body;
-    if (!key) return res.status(400).send("Missing key");
-
-    keys.set(key, { hwid: null });
-    saveKeys();
-
-    res.send("OK");
+const bot = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-app.post("/admin/key/delete", (req, res) => {
-    const { key } = req.body;
-    if (!keys.has(key)) return res.status(404).send("Not found");
-
-    keys.delete(key);
-    saveKeys();
-
-    res.send("OK");
+bot.once("ready", () => {
+    console.log(`Logged in as ${bot.user.tag}`);
 });
 
-app.get("/admin/key/list", (req, res) => {
-    res.json([...keys.keys()]);
+bot.on("messageCreate", async (msg) => {
+    if (msg.author.bot) return;
+    if (!msg.content.startsWith("!key")) return;
+    if (!ALLOWED_USERS.includes(msg.author.id)) {
+        return msg.reply("❌ No permission");
+    }
+
+    const args = msg.content.split(" ");
+    const sub = args[1];
+
+    if (sub === "add") {
+        const key = args[2];
+        if (!key) return msg.reply("Usage: !key add <key>");
+
+        keys.set(key, { hwid: null });
+        saveKeys();
+        return msg.reply(`✅ Key added: \`${key}\``);
+    }
+
+    if (sub === "delete") {
+        const key = args[2];
+        if (!keys.has(key)) return msg.reply("❌ Key not found");
+
+        keys.delete(key);
+        saveKeys();
+        return msg.reply(`🗑️ Key deleted: \`${key}\``);
+    }
+
+    if (sub === "list") {
+        if (keys.size === 0) return msg.reply("No keys stored");
+
+        return msg.reply(
+            "**Keys:**\n" + [...keys.keys()].map(k => `\`${k}\``).join("\n")
+        );
+    }
+
+    msg.reply("Commands: `!key add <key>`, `!key delete <key>`, `!key list`");
 });
 
-/* ================= ROBLOX AUTH ================= */
+bot.login(BOT_TOKEN);
+
+/* ================= AUTH SERVER ================= */
+
+const app = express();
+app.use(express.json());
 
 app.get("/v9/auth", (req, res) => {
     const { k, hwid, experienceId } = req.query;
@@ -79,8 +116,6 @@ app.get("/v9/auth", (req, res) => {
 
     return res.status(200).send("OK");
 });
-
-/* ================= START ================= */
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
