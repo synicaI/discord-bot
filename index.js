@@ -1,18 +1,60 @@
-import { Client, GatewayIntentBits, Partials, EmbedBuilder } from "discord.js";
-import express from "express";
+const express = require("express");
+const { Client, GatewayIntentBits } = require("discord.js");
 
+// ================= CONFIG =================
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const PREFIX = "!";
+
+// Allowed Discord user IDs (ADMINS)
+const ADMINS = [
+    "1001562621381714080",
+    "1375016755822596096",
+    "1389631531114430594",
+    "1255892341206552607"
+];
+
+// ================= STORAGE =================
+// In-memory key store (resets on restart)
+const keys = new Map();
+
+// ================= EXPRESS =================
 const app = express();
 app.use(express.json());
 
-// ===== CONFIG =====
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const LOG_CHANNEL_ID = "1467847883456778358";
-const ADMIN_IDS = ["1001562621381714080","1375016755822596096","1389631531114430594","1255892341206552607"];
+// Roblox auth
+app.get("/v9/auth", (req, res) => {
+    const { k, hwid, experienceId } = req.query;
 
-// ===== KEYS =====
-const keys = new Map();
+    if (!k || !hwid || !experienceId) {
+        return res.status(401).send("AUTH_FAIL");
+    }
 
-// ===== DISCORD BOT =====
+    if (!keys.has(k)) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    const data = keys.get(k);
+
+    // Lock HWID on first use
+    if (data.hwid === null) {
+        data.hwid = hwid;
+        keys.set(k, data);
+    }
+
+    if (data.hwid !== hwid) {
+        return res.status(401).send("AUTH_FAIL");
+    }
+
+    return res.status(200).send("OK");
+});
+
+// Start Express
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+    console.log("Auth server running on port", PORT);
+});
+
+// ================= DISCORD BOT =================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -22,86 +64,55 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-    console.log(`Discord bot ready as ${client.user.tag}`);
+    console.log(`Logged in as ${client.user.tag}`);
 });
 
-async function logDiscord(title, description, color = 0x2b2d31) {
-    const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (!channel) return;
-    const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(description)
-        .setColor(color)
-        .setTimestamp();
-    channel.send({ embeds: [embed] }).catch(() => {});
-}
-
-// ===== DISCORD COMMANDS =====
 client.on("messageCreate", async (message) => {
-    if (!message.content.startsWith("!")) return;
     if (message.author.bot) return;
+    if (!message.content.startsWith(PREFIX)) return;
 
-    const [cmd, ...args] = message.content.slice(1).trim().split(/\s+/);
-
-    if (!ADMIN_IDS.includes(message.author.id)) {
-        return message.reply("You do not have permission to use this bot.");
+    if (!ADMINS.includes(message.author.id)) {
+        return message.reply("❌ You do not have permission.");
     }
 
-    if (cmd === "key") {
-        const sub = args[0];
-        if (!sub) return message.reply("Usage: !key <add|delete|list> <key>");
+    const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
+    const command = args.shift()?.toLowerCase();
 
-        if (sub === "add") {
-            const k = args[1];
-            if (!k) return message.reply("Provide a key to add.");
-            keys.set(k.trim(), { hwid: null, expires: null });
-            message.reply(`Key \`${k.trim()}\` added.`);
-            await logDiscord("🔑 Key Added", `Key: \`${k.trim()}\`\nBy: <@${message.author.id}>`);
-        } 
-        else if (sub === "delete") {
-            const k = args[1];
-            if (!k) return message.reply("Provide a key to delete.");
-            if (!keys.has(k.trim())) return message.reply("Key not found.");
-            keys.delete(k.trim());
-            message.reply(`Key \`${k.trim()}\` deleted.`);
-            await logDiscord("🗑️ Key Deleted", `Key: \`${k.trim()}\`\nBy: <@${message.author.id}>`, 0xff0000);
-        } 
-        else if (sub === "list") {
-            if (keys.size === 0) return message.reply("No keys added yet.");
-            const list = [...keys.keys()].join(", ");
-            message.reply(`Keys:\n${list}`);
-        } 
-        else {
-            message.reply("Unknown subcommand. Use add, delete, list.");
+    // !key add <key>
+    if (command === "key" && args[0] === "add") {
+        const key = args[1];
+        if (!key) return message.reply("Usage: `!key add <key>`");
+
+        keys.set(key, { hwid: null });
+        return message.reply(`✅ Key added: \`${key}\``);
+    }
+
+    // !key remove <key>
+    if (command === "key" && args[0] === "remove") {
+        const key = args[1];
+        if (!key) return message.reply("Usage: `!key remove <key>`");
+
+        if (!keys.has(key)) {
+            return message.reply("❌ Key not found.");
         }
+
+        keys.delete(key);
+        return message.reply(`🗑️ Key removed: \`${key}\``);
+    }
+
+    // !key list
+    if (command === "key" && args[0] === "list") {
+        if (keys.size === 0) {
+            return message.reply("📭 No keys available.");
+        }
+
+        let text = "";
+        for (const [key, data] of keys.entries()) {
+            text += `• ${key} | HWID: ${data.hwid ?? "null"}\n`;
+        }
+
+        return message.reply("```" + text + "```");
     }
 });
 
-// ===== EXPRESS ROBLOX AUTH =====
-app.get("/v9/auth", async (req, res) => {
-    let { k, hwid, experienceId } = req.query;
-    if (!k || !hwid || !experienceId) return res.status(401).send("AUTH_FAIL");
-
-    k = String(k).trim();
-
-    if (!keys.has(k)) {
-        return res.status(401).send("AUTH_FAIL");
-    }
-
-    const data = keys.get(k);
-
-    if (data.hwid === null) {
-        data.hwid = hwid;
-        keys.set(k, data);
-        await logDiscord("🔒 HWID Locked", `Key: \`${k}\`\nHWID: \`${hwid}\`\nExperienceId: \`${experienceId}\``);
-    }
-
-    if (data.hwid !== hwid) return res.status(401).send("AUTH_FAIL");
-
-    return res.status(200).send("");
-});
-
-// ===== START =====
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Auth server running on port ${PORT}`));
 client.login(BOT_TOKEN);
