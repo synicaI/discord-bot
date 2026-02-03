@@ -1,123 +1,65 @@
 const express = require("express");
-const fs = require("fs");
-const { Client, GatewayIntentBits } = require("discord.js");
-
-/* ================= CONFIG ================= */
-
-const BOT_TOKEN = process.env.BOT_TOKEN; // REQUIRED
-const ALLOWED_USERS = [
-    "1001562621381714080",
-    "1375016755822596096",
-    "1389631531114430594",
-    "1255892341206552607"
-];
-
-const DATA_FILE = "./keys.json";
-
-/* ================= STORAGE ================= */
-
-let keys = new Map();
-
-function loadKeys() {
-    if (!fs.existsSync(DATA_FILE)) {
-        fs.writeFileSync(DATA_FILE, "{}");
-    }
-    keys = new Map(Object.entries(JSON.parse(fs.readFileSync(DATA_FILE))));
-}
-
-function saveKeys() {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(Object.fromEntries(keys), null, 2));
-}
-
-loadKeys();
-
-/* ================= DISCORD BOT ================= */
-
-const bot = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-bot.once("ready", () => {
-    console.log(`Logged in as ${bot.user.tag}`);
-});
-
-bot.on("messageCreate", async (msg) => {
-    if (msg.author.bot) return;
-    if (!msg.content.startsWith("!key")) return;
-    if (!ALLOWED_USERS.includes(msg.author.id)) {
-        return msg.reply("❌ No permission");
-    }
-
-    const args = msg.content.split(" ");
-    const sub = args[1];
-
-    if (sub === "add") {
-        const key = args[2];
-        if (!key) return msg.reply("Usage: !key add <key>");
-
-        keys.set(key, { hwid: null });
-        saveKeys();
-        return msg.reply(`✅ Key added: \`${key}\``);
-    }
-
-    if (sub === "delete") {
-        const key = args[2];
-        if (!keys.has(key)) return msg.reply("❌ Key not found");
-
-        keys.delete(key);
-        saveKeys();
-        return msg.reply(`🗑️ Key deleted: \`${key}\``);
-    }
-
-    if (sub === "list") {
-        if (keys.size === 0) return msg.reply("No keys stored");
-
-        return msg.reply(
-            "**Keys:**\n" + [...keys.keys()].map(k => `\`${k}\``).join("\n")
-        );
-    }
-
-    msg.reply("Commands: `!key add <key>`, `!key delete <key>`, `!key list`");
-});
-
-bot.login(BOT_TOKEN);
-
-/* ================= AUTH SERVER ================= */
-
 const app = express();
-app.use(express.json());
 
+// ================= CONFIG =================
+const PORT = process.env.PORT || 8080;
+const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+
+// ================= KEYS (SHARED) =================
+const keys = {
+  "a9c3f72b5e4d8190f1c7b2e3d6a98c41": { hwid: null, expires: null },
+  "x972jsdjdinsdvbdozopnksd92ejd919": { hwid: null, expires: null }
+};
+
+// EXPORT KEYS SO BOT CAN MODIFY THEM
+module.exports.keys = keys;
+
+// ================= HELPERS =================
+function unauthorized(res, reason = "Unauthorized!") {
+  console.log("AUTH FAIL:", reason);
+  return res.status(200).send(reason);
+}
+
+// ================= AUTH ROUTE =================
 app.get("/v9/auth", (req, res) => {
-    const { k, hwid, experienceId } = req.query;
+  const { SECRET_KEY: secret, k, hwid, experienceId } = req.query;
 
-    if (!k || !hwid || !experienceId) {
-        return res.status(401).send("AUTH_FAIL");
-    }
+  console.log("==== AUTH ATTEMPT ====");
+  console.log({ key: k, hwid, experienceId, time: new Date() });
 
-    if (!keys.has(k)) {
-        return res.status(401).send("AUTH_FAIL");
-    }
+  if (secret !== SECRET_KEY) return unauthorized(res, "Invalid secret key");
+  if (!k || !keys[k]) return unauthorized(res, "Key not found");
+  if (!hwid) return unauthorized(res, "HWID missing");
+  if (!experienceId) return unauthorized(res, "ExperienceId missing");
 
-    const data = keys.get(k);
+  const keyData = keys[k];
 
-    if (data.hwid === null) {
-        data.hwid = hwid;
-        keys.set(k, data);
-        saveKeys();
-    }
+  if (keyData.expires && new Date() > keyData.expires)
+    return unauthorized(res, "Key expired");
 
-    if (data.hwid !== hwid) {
-        return res.status(401).send("AUTH_FAIL");
-    }
+  if (!keyData.hwid) {
+    keyData.hwid = hwid;
+    console.log(`HWID locked for key ${k}: ${hwid}`);
+  } else if (keyData.hwid !== hwid) {
+    return unauthorized(res, "HWID mismatch");
+  }
 
-    return res.status(200).send("OK");
+  console.log(`AUTH SUCCESS: ${k}`);
+  return res.status(200).send("");
 });
 
-const PORT = process.env.PORT || 8080;
+// ================= HWID RESET =================
+app.get("/reset-hwid", (req, res) => {
+  const { k, secret } = req.query;
+  if (secret !== SECRET_KEY) return res.status(403).send("Forbidden");
+  if (!k || !keys[k]) return res.status(404).send("Key not found");
+
+  keys[k].hwid = null;
+  console.log(`HWID RESET for key ${k}`);
+  return res.status(200).send("HWID reset successfully");
+});
+
+// ================= START SERVER =================
 app.listen(PORT, () => {
-    console.log("Auth server running on port", PORT);
+  console.log(`Auth server running on port ${PORT}`);
 });
