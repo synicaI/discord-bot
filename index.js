@@ -1,3 +1,4 @@
+import fs from "fs";
 import express from "express";
 import { Client, GatewayIntentBits } from "discord.js";
 
@@ -6,20 +7,25 @@ import { Client, GatewayIntentBits } from "discord.js";
 const PORT = process.env.PORT || 8080;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_ROLE_ID = "1461424207932948728";
-const SECRET = "PUT_A_SECRET_HERE";
+const SECRET = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+const KEY_FILE = "./keys.json";
 
-/* ================= KEY STORE ================= */
-/*
-keys = {
-  "mykey123": { hwid: null }
+/* ================= LOAD / SAVE ================= */
+
+function loadKeys() {
+  if (!fs.existsSync(KEY_FILE)) return {};
+  return JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
 }
-*/
-const keys = {};
+
+function saveKeys(data) {
+  fs.writeFileSync(KEY_FILE, JSON.stringify(data, null, 2));
+}
+
+let keys = loadKeys();
 
 /* ================= EXPRESS ================= */
 
 const app = express();
-app.use(express.json());
 
 app.get("/auth", (req, res) => {
   const { key, hwid, secret } = req.query;
@@ -27,17 +33,14 @@ app.get("/auth", (req, res) => {
   if (secret !== SECRET) return res.status(401).end();
   if (!key || !keys[key]) return res.status(401).end();
 
-  const data = keys[key];
-
-  // first execution → lock hwid
-  if (!data.hwid) {
-    data.hwid = hwid;
+  if (!keys[key].hwid) {
+    keys[key].hwid = hwid;
+    saveKeys(keys);
     console.log(`[LOCK] ${key} → ${hwid}`);
     return res.status(200).end();
   }
 
-  // hwid mismatch
-  if (data.hwid !== hwid) {
+  if (keys[key].hwid !== hwid) {
     return res.status(401).end();
   }
 
@@ -63,25 +66,26 @@ client.on("messageCreate", (msg) => {
   if (!msg.member.roles.cache.has(ADMIN_ROLE_ID))
     return msg.reply("❌ You are not an admin");
 
-  const args = msg.content.split(" ");
-  const sub = args[1];
-  const key = args[2];
+  const [, sub, key] = msg.content.split(" ");
 
   if (sub === "add") {
     if (!key) return msg.reply("Usage: !key add <key>");
     keys[key] = { hwid: null };
+    saveKeys(keys);
     return msg.reply(`✅ Key **${key}** added`);
   }
 
   if (sub === "delete") {
     if (!keys[key]) return msg.reply("❌ Key not found");
     delete keys[key];
+    saveKeys(keys);
     return msg.reply(`🗑️ Key **${key}** deleted`);
   }
 
   if (sub === "reset") {
     if (!keys[key]) return msg.reply("❌ Key not found");
     keys[key].hwid = null;
+    saveKeys(keys);
     return msg.reply(`🔓 HWID reset for **${key}**`);
   }
 
@@ -93,4 +97,4 @@ client.on("messageCreate", (msg) => {
 });
 
 client.login(BOT_TOKEN);
-console.log("Discord bot starting...");
+console.log("Discord bot logged in");
