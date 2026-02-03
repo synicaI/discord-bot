@@ -1,9 +1,13 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const { keys } = require("./index");
+import { Client, GatewayIntentBits } from "discord.js";
+import fetch from "node-fetch";
 
+// ===== CONFIG =====
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_ROLE_ID = "1461424207932948728";
+const BASE_URL = "https://skillful-achievement-production-f080.up.railway.app";
+const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
+// ===== CLIENT =====
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -12,68 +16,78 @@ const client = new Client({
   ]
 });
 
-function isAdmin(member) {
-  return member.roles.cache.has(ADMIN_ROLE_ID);
-}
-
-client.on("messageCreate", async (msg) => {
-  if (msg.author.bot) return;
-  if (!msg.content.startsWith("!key")) return;
-
-  if (!isAdmin(msg.member)) {
-    return msg.reply("❌ You are not an admin.");
-  }
-
-  const args = msg.content.split(" ").slice(1);
-  const sub = args[0];
-
-  // ================= ADD =================
-  if (sub === "add") {
-    const key = args[1];
-    if (!key) return msg.reply("Usage: `!key add <key>`");
-
-    keys[key] = { hwid: null, expires: null };
-    return msg.reply(`✅ Key **${key}** added.`);
-  }
-
-  // ================= DELETE =================
-  if (sub === "delete") {
-    const key = args[1];
-    if (!keys[key]) return msg.reply("❌ Key not found.");
-
-    delete keys[key];
-    return msg.reply(`🗑️ Key **${key}** deleted.`);
-  }
-
-  // ================= LIST =================
-  if (sub === "list") {
-    const list = Object.keys(keys);
-
-    if (list.length === 0) {
-      return msg.reply("No keys found.");
-    }
-
-    return msg.reply(
-      "**🔑 Keys:**\n```" + list.join("\n") + "```"
-    );
-  }
-
-  // ================= HWID RESET =================
-  if (sub === "hwid" && args[1] === "reset") {
-    const key = args[2];
-    if (!keys[key]) return msg.reply("❌ Key not found.");
-
-    keys[key].hwid = null;
-    return msg.reply(`🔁 HWID reset for **${key}**`);
-  }
-
-  msg.reply(
-    "Usage:\n" +
-    "`!key add <key>`\n" +
-    "`!key delete <key>`\n" +
-    "`!key list`\n" +
-    "`!key hwid reset <key>`"
-  );
+client.once("ready", () => {
+  console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
+// ===== COMMAND HANDLER =====
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  if (!message.content.startsWith("!key")) return;
+
+  // Role check
+  if (!message.member.roles.cache.has(ADMIN_ROLE_ID)) {
+    return message.reply("❌ You are not an admin.");
+  }
+
+  const args = message.content.trim().split(/\s+/);
+  const sub = args[1];
+
+  try {
+    // ===== ADD KEY =====
+    if (sub === "add") {
+      const key = args[2];
+      if (!key) return message.reply("Usage: !key add <key>");
+
+      await fetch(
+        `${BASE_URL}/bot/add?secret=${SECRET_KEY}&key=${encodeURIComponent(key)}`
+      );
+
+      return message.reply(`✅ Key **${key}** added.`);
+    }
+
+    // ===== LIST KEYS =====
+    if (sub === "list") {
+      const res = await fetch(
+        `${BASE_URL}/bot/list?secret=${SECRET_KEY}`
+      );
+
+      const keys = await res.json();
+
+      if (!keys.length) {
+        return message.reply("📭 No keys found.");
+      }
+
+      return message.reply(
+        "```" + keys.join("\n") + "```"
+      );
+    }
+
+    // ===== HWID RESET =====
+    if (sub === "hwid" && args[2] === "reset") {
+      const key = args[3];
+      if (!key) return message.reply("Usage: !key hwid reset <key>");
+
+      await fetch(
+        `${BASE_URL}/bot/reset?secret=${SECRET_KEY}&key=${encodeURIComponent(key)}`
+      );
+
+      return message.reply(`🔁 HWID reset for **${key}**`);
+    }
+
+    // ===== HELP =====
+    return message.reply(
+      "Usage:\n" +
+      "`!key add <key>`\n" +
+      "`!key list`\n" +
+      "`!key hwid reset <key>`"
+    );
+
+  } catch (err) {
+    console.error(err);
+    return message.reply("❌ Bot error. Check logs.");
+  }
+});
+
+// ===== LOGIN =====
 client.login(BOT_TOKEN);
