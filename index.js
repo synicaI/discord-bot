@@ -1,55 +1,96 @@
 import express from "express";
-const app = express();
+import { Client, GatewayIntentBits } from "discord.js";
 
-app.use(express.json());
+/* ================= CONFIG ================= */
 
 const PORT = process.env.PORT || 8080;
-const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ROLE_ID = "1461424207932948728";
+const SECRET = "PUT_A_SECRET_HERE";
 
-// ===== SINGLE SOURCE OF TRUTH =====
-const keys = {}; // { key: { hwid: string|null } }
+/* ================= KEY STORE ================= */
+/*
+keys = {
+  "mykey123": { hwid: null }
+}
+*/
+const keys = {};
 
-// ===== AUTH ROUTE (ROBLOX) =====
-app.get("/v9/auth", (req, res) => {
-  const { secret, k, hwid } = req.query;
+/* ================= EXPRESS ================= */
 
-  if (secret !== SECRET_KEY) return res.status(401).send("bad secret");
-  if (!k || !keys[k]) return res.status(401).send("key not found");
+const app = express();
+app.use(express.json());
 
-  const data = keys[k];
+app.get("/auth", (req, res) => {
+  const { key, hwid, secret } = req.query;
 
+  if (secret !== SECRET) return res.status(401).end();
+  if (!key || !keys[key]) return res.status(401).end();
+
+  const data = keys[key];
+
+  // first execution → lock hwid
   if (!data.hwid) {
     data.hwid = hwid;
-  } else if (data.hwid !== hwid) {
-    return res.status(401).send("hwid mismatch");
+    console.log(`[LOCK] ${key} → ${hwid}`);
+    return res.status(200).end();
   }
 
-  return res.status(200).send("");
-});
+  // hwid mismatch
+  if (data.hwid !== hwid) {
+    return res.status(401).end();
+  }
 
-// ===== BOT ROUTES =====
-app.post("/bot/key/add", (req, res) => {
-  const { key } = req.body;
-  if (!key) return res.json({ ok: false });
-
-  keys[key] = { hwid: null };
-  return res.json({ ok: true });
-});
-
-app.get("/bot/key/list", (req, res) => {
-  return res.json(Object.keys(keys));
-});
-
-app.post("/bot/key/reset", (req, res) => {
-  const { key } = req.body;
-  if (!keys[key]) return res.json({ ok: false });
-
-  keys[key].hwid = null;
-  return res.json({ ok: true });
+  return res.status(200).end();
 });
 
 app.listen(PORT, () => {
   console.log("Auth server running on", PORT);
 });
 
-import "./bot.js";
+/* ================= DISCORD BOT ================= */
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+client.on("messageCreate", (msg) => {
+  if (!msg.content.startsWith("!key")) return;
+  if (!msg.member.roles.cache.has(ADMIN_ROLE_ID))
+    return msg.reply("❌ You are not an admin");
+
+  const args = msg.content.split(" ");
+  const sub = args[1];
+  const key = args[2];
+
+  if (sub === "add") {
+    if (!key) return msg.reply("Usage: !key add <key>");
+    keys[key] = { hwid: null };
+    return msg.reply(`✅ Key **${key}** added`);
+  }
+
+  if (sub === "delete") {
+    if (!keys[key]) return msg.reply("❌ Key not found");
+    delete keys[key];
+    return msg.reply(`🗑️ Key **${key}** deleted`);
+  }
+
+  if (sub === "reset") {
+    if (!keys[key]) return msg.reply("❌ Key not found");
+    keys[key].hwid = null;
+    return msg.reply(`🔓 HWID reset for **${key}**`);
+  }
+
+  if (sub === "list") {
+    const list = Object.keys(keys);
+    if (!list.length) return msg.reply("No keys");
+    return msg.reply("**Keys:**\n" + list.join("\n"));
+  }
+});
+
+client.login(BOT_TOKEN);
+console.log("Discord bot starting...");
