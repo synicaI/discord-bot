@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-const TOKEN = process.env.BOT_TOKEN; // Railway env var
+const TOKEN = process.env.BOT_TOKEN;
 const ADMIN_ROLE_ID = "1461424207932948728";
 const SERVER_URL = "https://skillful-achievement-production-f080.up.railway.app";
 
@@ -18,21 +18,42 @@ client.once("ready", () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (!message.content.startsWith("!key")) return;
 
+  // Role check
   if (!message.member.roles.cache.has(ADMIN_ROLE_ID)) {
     return message.reply("❌ You are not an admin.");
   }
 
   const args = message.content.trim().split(/\s+/);
-  const cmd = args.shift()?.toLowerCase();
+  // args[0] = !key
+  const action = args[1];
+  const key = args[2];
 
-  if (cmd !== "!key") return;
+  // ===== LIST =====
+  if (action === "list") {
+    try {
+      const res = await fetch(`${SERVER_URL}/admin/key/list`);
+      const data = await res.json();
 
-  const action = args[0];
-  const key = args[1];
+      if (!data || Object.keys(data).length === 0) {
+        return message.reply("📭 No keys stored.");
+      }
 
+      return message.reply(
+        `📋 Keys:\n\`\`\`${Object.keys(data).join("\n")}\`\`\``
+      );
+    } catch (err) {
+      console.error(err);
+      return message.reply("❌ Failed to fetch key list.");
+    }
+  }
+
+  // From here on, ADD / DELETE REQUIRE a key
   if (!action || !key) {
-    return message.reply("Usage: `!key add <key>` | `!key delete <key>` | `!key list`");
+    return message.reply(
+      "Usage:\n`!key add <key>`\n`!key delete <key>`\n`!key list`"
+    );
   }
 
   try {
@@ -54,21 +75,11 @@ client.on("messageCreate", async (message) => {
       return message.reply(`🗑️ Key **${key}** deleted.`);
     }
 
-    if (action === "list") {
-      const res = await fetch(`${SERVER_URL}/admin/key/list`);
-      const data = await res.json();
-      return message.reply(
-        Object.keys(data).length
-          ? `📋 Keys:\n\`\`\`${Object.keys(data).join("\n")}\`\`\``
-          : "No keys stored."
-      );
-    }
-
-    message.reply("Unknown action.");
+    return message.reply("❌ Unknown action.");
 
   } catch (err) {
     console.error(err);
-    message.reply("❌ Error talking to auth server.");
+    return message.reply("❌ Error talking to auth server.");
   }
 });
 
