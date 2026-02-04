@@ -1,6 +1,12 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import { keys } from "./store.js";
+import fetch from "node-fetch";
 
+// ================= CONFIG =================
+const ADMIN_ROLE_ID = "1461424207932948728";
+const AUTH_SERVER = "https://skillful-achievement-production-f080.up.railway.app/"; // SAME CONTAINER
+const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
+
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -9,56 +15,73 @@ const client = new Client({
   ]
 });
 
+// ================= READY =================
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
-client.on("messageCreate", async (msg) => {
-  if (!msg.content.startsWith("!key")) return;
+// ================= HELPERS =================
+function isAdmin(member) {
+  return member.roles.cache.has(ADMIN_ROLE_ID);
+}
 
-  const args = msg.content.split(" ").slice(1);
-  const cmd = args.shift();
+async function api(path) {
+  const res = await fetch(`${AUTH_SERVER}${path}`);
+  const text = await res.text(); // IMPORTANT: text, not json
+  return text;
+}
 
-  if (cmd === "add") {
-    const key = args[0];
-    if (!key) return msg.reply("usage: !key add <key>");
-    if (keys.has(key)) return msg.reply("key already exists");
+// ================= COMMANDS =================
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  if (!message.content.startsWith("!key")) return;
 
-    keys.set(key, { hwid: null });
-    return msg.reply(`✅ key added: \`${key}\``);
+  if (!isAdmin(message.member)) {
+    return message.reply("❌ You are not an admin.");
   }
 
-  if (cmd === "delete") {
-    const key = args[0];
-    if (!keys.has(key)) return msg.reply("key not found");
+  const args = message.content.split(" ").slice(1);
+  const sub = args[0];
+  const key = args[1];
 
-    keys.delete(key);
-    return msg.reply(`🗑️ key deleted: \`${key}\``);
+  // -------- ADD --------
+  if (sub === "add") {
+    if (!key) return message.reply("Usage: `!key add <key>`");
+
+    const res = await api(`/discord/add?k=${key}&secret=${SECRET_KEY}`);
+    return message.reply(res || "✅ Key added.");
   }
 
-  if (cmd === "reset") {
-    const key = args[0];
-    const entry = keys.get(key);
-    if (!entry) return msg.reply("key not found");
+  // -------- DELETE --------
+  if (sub === "delete") {
+    if (!key) return message.reply("Usage: `!key delete <key>`");
 
-    entry.hwid = null;
-    return msg.reply(`♻️ HWID reset for \`${key}\``);
+    const res = await api(`/discord/delete?k=${key}&secret=${SECRET_KEY}`);
+    return message.reply(res || "🗑️ Key deleted.");
   }
 
-  if (cmd === "list") {
-    if (keys.size === 0) return msg.reply("no keys");
+  // -------- RESET HWID --------
+  if (sub === "reset") {
+    if (!key) return message.reply("Usage: `!key reset <key>`");
 
-    let out = "";
-    let i = 1;
-    for (const [k, v] of keys) {
-      out += `${i}. ${k} ${v.hwid ? "🔒" : "🟢"}\n`;
-      i++;
-    }
-
-    return msg.reply("```" + out + "```");
+    const res = await api(`/reset-hwid?k=${key}&secret=${SECRET_KEY}`);
+    return message.reply(res || "🔓 HWID reset.");
   }
 
-  msg.reply("usage: !key <add|delete|reset|list>");
+  // -------- LIST --------
+  if (sub === "list") {
+    const res = await api(`/discord/list?secret=${SECRET_KEY}`);
+    return message.reply(res || "No keys.");
+  }
+
+  return message.reply(
+    "Usage:\n" +
+    "`!key add <key>`\n" +
+    "`!key delete <key>`\n" +
+    "`!key reset <key>`\n" +
+    "`!key list`"
+  );
 });
 
-client.login("YOUR_DISCORD_BOT_TOKEN");
+// ================= LOGIN =================
+client.login(process.env.BOT_TOKEN);
