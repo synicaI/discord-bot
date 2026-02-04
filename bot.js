@@ -3,7 +3,7 @@ import fetch from "node-fetch";
 
 // ================= CONFIG =================
 const ADMIN_ROLE_ID = "1461424207932948728";
-const AUTH_SERVER = "https://skillful-achievement-production-f080.up.railway.app/"; // SAME CONTAINER
+const AUTH_SERVER = "https://skillful-achievement-production-f080.up.railway.app"; // SAME CONTAINER
 const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
 
 // ================= CLIENT =================
@@ -85,3 +85,4 @@ client.on("messageCreate", async (message) => {
 
 // ================= LOGIN =================
 client.login(process.env.BOT_TOKEN);
+
