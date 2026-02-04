@@ -1,32 +1,73 @@
 import express from "express";
-import { keys } from "./store.js";
+import fs from "fs";
 
 const app = express();
+app.use(express.json());
 
 const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
-const PORT = 8080;
+const DB_FILE = "./keys.json";
 
-app.get("/v9/auth", (req, res) => {
-  const { SECRET_KEY: secret, k, hwid } = req.query;
+if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, "{}");
 
-  if (secret !== SECRET_KEY) return res.status(403).send("bad secret");
-  if (!k || !hwid) return res.status(400).send("missing params");
+function loadKeys() {
+  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+}
+function saveKeys(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
 
-  const entry = keys.get(k);
-  if (!entry) return res.status(401).send("invalid key");
+function auth(req, res, next) {
+  if (req.headers["x-secret"] !== SECRET_KEY)
+    return res.status(403).json({ error: "Invalid secret" });
+  next();
+}
 
-  if (!entry.hwid) {
-    entry.hwid = hwid;
-    return res.send("");
-  }
+app.post("/key/add", auth, (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: "Missing key" });
 
-  if (entry.hwid !== hwid) {
-    return res.status(401).send("hwid mismatch");
-  }
+  const keys = loadKeys();
+  keys[key] = { hwid: null };
+  saveKeys(keys);
 
-  res.send("");
+  res.json({ success: true });
 });
 
-app.listen(PORT, () => {
-  console.log("Auth server running on", PORT);
+app.post("/key/delete", auth, (req, res) => {
+  const { key } = req.body;
+  const keys = loadKeys();
+  delete keys[key];
+  saveKeys(keys);
+  res.json({ success: true });
 });
+
+app.post("/key/reset", auth, (req, res) => {
+  const { key } = req.body;
+  const keys = loadKeys();
+  if (!keys[key]) return res.status(404).json({ error: "Key not found" });
+
+  keys[key].hwid = null;
+  saveKeys(keys);
+  res.json({ success: true });
+});
+
+app.get("/key/list", auth, (req, res) => {
+  res.json(Object.keys(loadKeys()));
+});
+
+app.post("/key/verify", (req, res) => {
+  const { key, hwid } = req.body;
+  const keys = loadKeys();
+
+  if (!keys[key]) return res.json({ success: false });
+
+  if (!keys[key].hwid) {
+    keys[key].hwid = hwid;
+    saveKeys(keys);
+    return res.json({ success: true });
+  }
+
+  res.json({ success: keys[key].hwid === hwid });
+});
+
+app.listen(8080, () => console.log("Auth server running on 8080"));
