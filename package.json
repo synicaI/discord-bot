@@ -1,11 +1,14 @@
 {
+  "name": "roblox-auth",
+  "version": "1.0.0",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js & node bot.js"
   },
   "dependencies": {
+    "discord.js": "^14.15.3",
     "express": "^4.18.2",
-    "discord.js": "^14.15.1",
     "node-fetch": "^3.3.2"
   }
 }
