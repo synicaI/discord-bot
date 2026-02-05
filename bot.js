@@ -1,67 +1,108 @@
-import { Client, GatewayIntentBits } from "discord.js";
-import fetch from "node-fetch";
+import { Client, GatewayIntentBits } from "discord.js"
+import fetch from "node-fetch"
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const AUTH_SERVER = "https://skillful-achievement-production-f080.up.railway.app";
-const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ";
-const ADMIN_ROLE_ID = "1461424207932948728";
+// ENV VARIABLES (RAILWAY)
+const TOKEN = process.env.DISCORD_TOKEN
+const AUTH_SERVER = process.env.AUTH_SERVER
+const SECRET_KEY = process.env.SECRET_KEY
+
+if (!TOKEN || !AUTH_SERVER || !SECRET_KEY) {
+    console.error("❌ Missing environment variables")
+    process.exit(1)
+}
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+})
 
-client.on("messageCreate", async msg => {
-  if (!msg.content.startsWith("!key")) return;
-  if (!msg.member.roles.cache.has(ADMIN_ROLE_ID))
-    return msg.reply("❌ Not admin");
+client.on("ready", () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`)
+})
 
-  const [, action, key] = msg.content.split(" ");
+client.on("messageCreate", async (message) => {
+    if (message.author.bot) return
+    if (!message.content.startsWith("!key")) return
 
-  try {
-    if (action === "add") {
-      await fetch(`${AUTH_SERVER}/key/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: SECRET_KEY, key })
-      });
-      msg.reply(`✅ Key added`);
+    const args = message.content.trim().split(/\s+/)
+    const sub = args[1]
+    const key = args[2]
+
+    try {
+        // ───── ADD KEY
+        if (sub === "add") {
+            if (!key) return message.reply("❌ Provide a key")
+
+            await fetch(`${AUTH_SERVER}/key/add`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": SECRET_KEY
+                },
+                body: JSON.stringify({ key })
+            })
+
+            return message.reply(`✅ Key **${key}** added`)
+        }
+
+        // ───── DELETE KEY
+        if (sub === "delete") {
+            if (!key) return message.reply("❌ Provide a key")
+
+            await fetch(`${AUTH_SERVER}/key/delete`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": SECRET_KEY
+                },
+                body: JSON.stringify({ key })
+            })
+
+            return message.reply(`🗑️ Key **${key}** deleted`)
+        }
+
+        // ───── RESET HWID
+        if (sub === "reset") {
+            if (!key) return message.reply("❌ Provide a key")
+
+            await fetch(`${AUTH_SERVER}/key/reset`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": SECRET_KEY
+                },
+                body: JSON.stringify({ key })
+            })
+
+            return message.reply(`♻️ HWID reset for **${key}**`)
+        }
+
+        // ───── LIST KEYS
+        if (sub === "list") {
+            const res = await fetch(
+                `${AUTH_SERVER}/key/list?secret=${SECRET_KEY}`
+            )
+
+            const data = await res.json()
+
+            let output = ""
+            for (const k in data) {
+                output += `${k} | HWID: ${data[k].hwid ?? "null"}\n`
+            }
+
+            if (output === "") output = "No keys"
+
+            return message.reply("```" + output + "```")
+        }
+
+        return message.reply("❓ Usage: `!key add|delete|reset|list <key>`")
+    } catch (err) {
+        console.error(err)
+        message.reply("❌ Server error")
     }
+})
 
-    if (action === "delete") {
-      await fetch(`${AUTH_SERVER}/key/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: SECRET_KEY, key })
-      });
-      msg.reply(`🗑️ Key deleted`);
-    }
-
-    if (action === "reset") {
-      await fetch(`${AUTH_SERVER}/key/reset`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: SECRET_KEY, key })
-      });
-      msg.reply(`🔁 HWID reset`);
-    }
-
-    if (action === "list") {
-      const res = await fetch(
-        `${AUTH_SERVER}/key/list?secret=${SECRET_KEY}`
-      );
-      const data = await res.json();
-      msg.reply(
-        data.length ? data.join("\n") : "No keys"
-      );
-    }
-  } catch (e) {
-    console.error(e);
-    msg.reply("❌ Server error");
-  }
-});
-
-client.login(BOT_TOKEN);
+client.login(TOKEN)
