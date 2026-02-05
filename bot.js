@@ -1,23 +1,41 @@
 import { Client, GatewayIntentBits } from "discord.js"
 import fetch from "node-fetch"
 
+// ENV VARIABLES (RAILWAY)
+const TOKEN = process.env.DISCORD_TOKEN
+const AUTH_SERVER = process.env.AUTH_SERVER
+const SECRET_KEY = process.env.SECRET_KEY
+
+if (!TOKEN || !AUTH_SERVER || !SECRET_KEY) {
+    console.error("❌ Missing environment variables")
+    process.exit(1)
+}
+
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 })
 
-const TOKEN = "PUT_YOUR_DISCORD_BOT_TOKEN_HERE"
-const AUTH_SERVER = "https://skillful-achievement-production-f080.up.railway.app"
-const SECRET_KEY = "DQOWHDIUQWHIQUWHDWQIUDHQWIUDHQWHDQWIUFHQIFQ"
+client.on("ready", () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`)
+})
 
 client.on("messageCreate", async (message) => {
-    if (!message.content.startsWith("!key") || message.author.bot) return
+    if (message.author.bot) return
+    if (!message.content.startsWith("!key")) return
 
-    const args = message.content.split(" ")
+    const args = message.content.trim().split(/\s+/)
     const sub = args[1]
     const key = args[2]
 
     try {
+        // ───── ADD KEY
         if (sub === "add") {
+            if (!key) return message.reply("❌ Provide a key")
+
             await fetch(`${AUTH_SERVER}/key/add`, {
                 method: "POST",
                 headers: {
@@ -26,10 +44,14 @@ client.on("messageCreate", async (message) => {
                 },
                 body: JSON.stringify({ key })
             })
+
             return message.reply(`✅ Key **${key}** added`)
         }
 
+        // ───── DELETE KEY
         if (sub === "delete") {
+            if (!key) return message.reply("❌ Provide a key")
+
             await fetch(`${AUTH_SERVER}/key/delete`, {
                 method: "POST",
                 headers: {
@@ -38,10 +60,14 @@ client.on("messageCreate", async (message) => {
                 },
                 body: JSON.stringify({ key })
             })
+
             return message.reply(`🗑️ Key **${key}** deleted`)
         }
 
+        // ───── RESET HWID
         if (sub === "reset") {
+            if (!key) return message.reply("❌ Provide a key")
+
             await fetch(`${AUTH_SERVER}/key/reset`, {
                 method: "POST",
                 headers: {
@@ -50,22 +76,31 @@ client.on("messageCreate", async (message) => {
                 },
                 body: JSON.stringify({ key })
             })
+
             return message.reply(`♻️ HWID reset for **${key}**`)
         }
 
+        // ───── LIST KEYS
         if (sub === "list") {
-            const res = await fetch(`${AUTH_SERVER}/key/list?secret=${SECRET_KEY}`)
+            const res = await fetch(
+                `${AUTH_SERVER}/key/list?secret=${SECRET_KEY}`
+            )
+
             const data = await res.json()
 
-            let out = ""
+            let output = ""
             for (const k in data) {
-                out += `${k} | HWID: ${data[k].hwid ?? "null"}\n`
+                output += `${k} | HWID: ${data[k].hwid ?? "null"}\n`
             }
 
-            return message.reply("```" + out + "```")
+            if (output === "") output = "No keys"
+
+            return message.reply("```" + output + "```")
         }
-    } catch (e) {
-        console.error(e)
+
+        return message.reply("❓ Usage: `!key add|delete|reset|list <key>`")
+    } catch (err) {
+        console.error(err)
         message.reply("❌ Server error")
     }
 })
